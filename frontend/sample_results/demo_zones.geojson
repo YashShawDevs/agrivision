@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [72.8777, 19.0760],
+          [72.8778, 19.0760],
+          [72.8778, 19.0761],
+          [72.8777, 19.0761],
+          [72.8777, 19.0760]
+        ]]
+      },
+      "properties": {
+        "weed_type": "Broadleaf Weed",
+        "confidence": 0.89,
+        "spray_needed": true,
+        "color": "#FF4444"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [72.8780, 19.0762],
+          [72.8781, 19.0762],
+          [72.8781, 19.0763],
+          [72.8780, 19.0763],
+          [72.8780, 19.0762]
+        ]]
+      },
+      "properties": {
+        "weed_type": "Grass Weed",
+        "confidence": 0.76,
+        "spray_needed": true,
+        "color": "#FF4444"
+      }
+    }
+  ]
+}

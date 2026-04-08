@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriVision - Precision Weed Detection</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌾 AgriVision</h1>
+            <p>Precision Weed Detection & Autonomous Targeted Spraying</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section id="upload-section" class="card">
+            <h2>📤 Upload Drone Video</h2>
+            <input type="file" id="video-upload" accept="video/*">
+            <button id="process-btn" disabled>Start Analysis</button>
+            <button id="demo-btn">Load Demo Results</button>
+            <div id="status"></div>
+        </section>
+
+        <!-- Results Tabs -->
+        <div id="results-section" style="display:none;">
+            <div class="tabs">
+                <button class="tab active" data-tab="video">Annotated Video</button>
+                <button class="tab" data-tab="map">GPS Spray Zones</button>
+                <button class="tab" data-tab="heatmap">Spray Actuation</button>
+                <button class="tab" data-tab="metrics">Savings Report</button>
+            </div>
+
+            <!-- Video Tab -->
+            <div id="tab-video" class="tab-content active">
+                <div class="card">
+                    <h2>🎥 AI Detection Results</h2>
+                    <video id="result-video" controls style="width:100%; max-width:800px;"></video>
+                    <p class="info">Green = Crops | Red = Weeds | Real-time YOLOv8-Seg inference</p>
+                </div>
+            </div>
+
+            <!-- Map Tab -->
+            <div id="tab-map" class="tab-content">
+                <div class="card">
+                    <h2>🗺️ GPS-Tagged Spray Zones</h2>
+                    <div id="map" style="height:600px;"></div>
+                    <p class="info">Red polygons = Spray zones | Click for details</p>
+                </div>
+            </div>
+
+            <!-- Heatmap Tab -->
+            <div id="tab-heatmap" class="tab-content">
+                <div class="card">
+                    <h2>🎯 Precision Spray Grid</h2>
+                    <img id="heatmap-img" style="width:100%; max-width:800px;">
+                    <p class="info">Red = Spray ON | Green = Spray OFF</p>
+                </div>
+            </div>
+
+            <!-- Metrics Tab -->
+            <div id="tab-metrics" class="tab-content">
+                <div class="card">
+                    <h2>💰 Impact Analysis</h2>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <h3 id="metric-hectares">--</h3>
+                            <p>Hectares Scanned</p>
+                        </div>
+                        <div class="metric">
+                            <h3 id="metric-density">--%</h3>
+                            <p>Weed Density</p>
+                        </div>
+                        <div class="metric highlight">
+                            <h3 id="metric-savings">--L</h3>
+                            <p>Chemical Saved</p>
+                        </div>
+                        <div class="metric highlight">
+                            <h3 id="metric-cost">₹--</h3>
+                            <p>Cost Saved</p>
+                        </div>
+                    </div>
+                    <div class="savings-bar">
+                        <div id="savings-fill" style="width:0%"></div>
+                    </div>
+                    <p class="savings-text" id="savings-percent">--% less herbicide vs blanket spray</p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>AI-n't No Competition | MIT-ADT AI Grand Challenge 2026</p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
