@@ -2,100 +2,282 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import droneMarkerImg from "@/assets/drone-marker.png";
 import type { AppState } from "@/hooks/useMissionState";
 
-// Inline drone marker — no external asset dependency, eliminates build-crash risk
-const DRONE_ICON_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' width='36' height='36'>
-    <circle cx='24' cy='24' r='22' fill='%23166534' stroke='%2322c55e' stroke-width='2'/>
-    <path d='M14 20h4v8h-4zM30 20h4v8h-4zM20 14v4h8v-4zM20 30v4h8v-4z' fill='%2322c55e'/>
-    <circle cx='24' cy='24' r='5' fill='white'/>
-    <circle cx='24' cy='24' r='2.5' fill='%23166534'/>
-  </svg>`
-)}`;
+const MAP_ZOOM = 17;
+const HOME: [number, number] = [19.8762, 75.3433];
 
-const HOME: [number, number] = [19.0760, 72.8777];
-const WAYPOINTS: [number, number][] = [
-  [19.0760, 72.8777],[19.0768, 72.8788],[19.0775, 72.8795],
-  [19.0780, 72.8788],[19.0783, 72.8775],[19.0778, 72.8762],
-  [19.0771, 72.8758],[19.0765, 72.8768],[19.0760, 72.8777],
-];
+// ── Fallback waypoints (same seed as useMissionState) ─────────────────────────
+// Matches FALLBACK_WEED_WAYPOINTS exactly — no random values.
+const FALLBACK_WEED_WAYPOINTS: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 6; i++) {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    pts.push([HOME[0] + (row - 0.5) * 0.00054, HOME[1] + (col - 1) * 0.00054]);
+  }
+  return pts;
+})();
 
-export function LiveMap({ appState = "idle" }: { appState?: AppState }) {
-  const [coords, setCoords] = useState<[number,number]>(HOME);
-  const mapRef    = useRef<HTMLDivElement>(null);
-  const mapInst   = useRef<L.Map|null>(null);
-  const marker    = useRef<L.Marker|null>(null);
-  const homeM     = useRef<L.Marker|null>(null);
-  const trail     = useRef<L.Polyline|null>(null);
-  const planned   = useRef<L.Polyline|null>(null);
-  const animFrame = useRef<number|null>(null);
-  const wpIdx     = useRef(0);
-  const prog      = useRef(0);
+// Full route: HOME → each weed zone → HOME
+function buildRoute(waypoints: [number, number][]): [number, number][] {
+  return [HOME, ...waypoints, HOME];
+}
 
+interface LiveMapProps {
+  appState?: AppState;
+  /** From useMissionState — same coordinates used for phases */
+  weedWaypoints?: [number, number][];
+  /** When true: show weed markers + spray icons */
+  isSprayMode?: boolean;
+}
+
+export function LiveMap({
+  appState = "idle",
+  weedWaypoints = FALLBACK_WEED_WAYPOINTS,
+  isSprayMode = false,
+}: LiveMapProps) {
+  const [coords, setCoords] = useState<[number, number]>(HOME);
+  const [activeSprayIdx, setActiveSprayIdx] = useState<number | null>(null);
+
+  const mapRef          = useRef<HTMLDivElement>(null);
+  const mapInstanceRef  = useRef<L.Map | null>(null);
+  const markerRef       = useRef<L.Marker | null>(null);
+  const homeMarkerRef   = useRef<L.Marker | null>(null);
+  const trailRef        = useRef<L.Polyline | null>(null);
+  const plannedPathRef  = useRef<L.Polyline | null>(null);
+  const weedMarkersRef  = useRef<L.CircleMarker[]>([]);
+  const sprayMarkersRef = useRef<L.CircleMarker[]>([]);
+  const animFrameRef    = useRef<number | null>(null);
+  const waypointIndexRef = useRef(0);
+  const progressRef      = useRef(0);
+
+  // ── Init map once ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!mapRef.current || mapInst.current) return;
-    const map = L.map(mapRef.current, { center: HOME, zoom: 16, zoomControl: false, attributionControl: false });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+    if (!mapRef.current || mapInstanceRef.current) return;
 
-    // Use SVG data-URI so the marker always renders regardless of asset pipeline
-    const icon = L.icon({ iconUrl: DRONE_ICON_SVG, iconSize:[36,36], iconAnchor:[18,18] });
-    marker.current = L.marker(HOME, { icon }).addTo(map);
-    mapInst.current = map;
-    return () => { map.remove(); mapInst.current = null; marker.current = null; };
+    const map = L.map(mapRef.current, {
+      center: HOME,
+      zoom: MAP_ZOOM,
+      zoomControl: false,
+      attributionControl: false,
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+
+    const droneIcon = L.icon({
+      iconUrl: droneMarkerImg,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+    });
+
+    const marker = L.marker(HOME, { icon: droneIcon }).addTo(map);
+    markerRef.current = marker;
+    mapInstanceRef.current = map;
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
   }, []);
 
+  // ── Execution animation ───────────────────────────────────────────────────
   useEffect(() => {
-    const map = mapInst.current; const m = marker.current;
-    if (!map || !m) return;
+    const map    = mapInstanceRef.current;
+    const marker = markerRef.current;
+    if (!map || !marker) return;
 
     if (appState === "executing") {
-      const homeIcon = L.divIcon({ html:`<div style="width:24px;height:24px;background:#2563eb;border:2px solid #93c5fd;border-radius:50%;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`, iconSize:[24,24], iconAnchor:[12,12], className:"" });
-      homeM.current = L.marker(HOME, { icon: homeIcon, interactive: false }).addTo(map);
-      planned.current = L.polyline(WAYPOINTS, { color:"#22c55e", weight:2, opacity:0.4, dashArray:"6 8" }).addTo(map);
-      trail.current = L.polyline([], { color:"#16a34a", weight:3, opacity:0.9 }).addTo(map);
-      wpIdx.current = 0; prog.current = 0;
-      const trailC: [number,number][] = [WAYPOINTS[0]];
+      const route = buildRoute(weedWaypoints); // HOME → zones → HOME
+
+      // Home marker
+      const homeIcon = L.divIcon({
+        html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:hsl(210,100%,55%);border:2px solid hsl(210,100%,75%);border-radius:50%;box-shadow:0 0 12px rgba(55,150,255,0.5);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        className: "",
+      });
+      homeMarkerRef.current = L.marker(HOME, {
+        icon: homeIcon,
+        interactive: false,
+      }).addTo(map);
+
+      // Planned route (dashed)
+      plannedPathRef.current = L.polyline(route, {
+        color: "hsl(210, 100%, 60%)",
+        weight: 1.5,
+        opacity: 0.3,
+        dashArray: "6, 8",
+      }).addTo(map);
+
+      // Trail (solid, drawn as drone moves)
+      trailRef.current = L.polyline([], {
+        color: "hsl(210, 100%, 55%)",
+        weight: 3,
+        opacity: 0.8,
+      }).addTo(map);
+
+      // Weed zone markers — red circles (spray OFF initially)
+      if (isSprayMode) {
+        weedMarkersRef.current = weedWaypoints.map((wp, i) => {
+          const c = L.circleMarker(wp, {
+            radius: 10,
+            color: "#ff4444",
+            fillColor: "#ff4444",
+            fillOpacity: 0.25,
+            weight: 2,
+          })
+            .bindTooltip(`Zone ${i + 1} — Weed area`, { permanent: false })
+            .addTo(map);
+          return c;
+        });
+      }
+
+      // Centre map on route
+      try { map.fitBounds(L.latLngBounds(route), { padding: [32, 32], maxZoom: 18 }); } catch {}
+
+      waypointIndexRef.current = 0;
+      progressRef.current      = 0;
+      const trailCoords: [number, number][] = [route[0]];
+
+      // Speed: 0.006 per frame → ~167 frames per segment at 60fps ≈ 2.8s/segment
+      const SPEED = 0.006;
 
       const animate = () => {
-        const i = wpIdx.current;
-        if (i >= WAYPOINTS.length - 1) return;
-        prog.current += 0.009;
-        if (prog.current >= 1) { prog.current = 0; wpIdx.current += 1; if (wpIdx.current >= WAYPOINTS.length-1) { m.setLatLng(WAYPOINTS[WAYPOINTS.length-1]); return; } }
-        const f = WAYPOINTS[wpIdx.current]; const t2 = WAYPOINTS[wpIdx.current+1]; const tt = prog.current;
-        const lat = f[0]+(t2[0]-f[0])*tt; const lng = f[1]+(t2[1]-f[1])*tt;
-        m.setLatLng([lat,lng]); setCoords([lat,lng]);
-        trailC.push([lat,lng]); trail.current?.setLatLngs(trailC);
-        animFrame.current = requestAnimationFrame(animate);
+        const idx = waypointIndexRef.current;
+        if (idx >= route.length - 1) return;
+
+        progressRef.current += SPEED;
+
+        if (progressRef.current >= 1) {
+          progressRef.current = 0;
+          waypointIndexRef.current += 1;
+          const newIdx = waypointIndexRef.current;
+
+          // Check if we just arrived at a weed zone (index 1 to weedWaypoints.length)
+          if (isSprayMode && newIdx >= 1 && newIdx <= weedWaypoints.length) {
+            const zoneIdx = newIdx - 1;
+            setActiveSprayIdx(zoneIdx);
+
+            // Turn this zone marker green (sprayed)
+            const weedMarker = weedMarkersRef.current[zoneIdx];
+            if (weedMarker) {
+              weedMarker.setStyle({ color: "#44ff88", fillColor: "#44ff88", fillOpacity: 0.4 });
+              weedMarker.setTooltipContent(`Zone ${zoneIdx + 1} — ✅ Sprayed`);
+            }
+
+            // Spray circle burst effect — expands then fades
+            const burst = L.circleMarker(weedWaypoints[zoneIdx], {
+              radius: 6, color: "#44ff88", fillColor: "#44ff88",
+              fillOpacity: 0.8, weight: 2,
+            }).addTo(map);
+            sprayMarkersRef.current.push(burst);
+            setTimeout(() => { burst.setStyle({ radius: 18, fillOpacity: 0.1, weight: 1 }); }, 50);
+            setTimeout(() => { burst.remove(); }, 800);
+          } else {
+            setActiveSprayIdx(null);
+          }
+
+          if (waypointIndexRef.current >= route.length - 1) {
+            marker.setLatLng(route[route.length - 1]);
+            return;
+          }
+        }
+
+        const from = route[waypointIndexRef.current];
+        const to   = route[waypointIndexRef.current + 1];
+        const t    = progressRef.current;
+
+        const lat = from[0] + (to[0] - from[0]) * t;
+        const lng = from[1] + (to[1] - from[1]) * t;
+
+        marker.setLatLng([lat, lng]);
+        setCoords([lat, lng]);
+        trailCoords.push([lat, lng]);
+        trailRef.current?.setLatLngs(trailCoords);
+
+        animFrameRef.current = requestAnimationFrame(animate);
       };
-      animFrame.current = requestAnimationFrame(animate);
-      return () => { if (animFrame.current) cancelAnimationFrame(animFrame.current); };
+
+      animFrameRef.current = requestAnimationFrame(animate);
+
+      return () => {
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      };
     }
 
+    // ── Reset on idle ─────────────────────────────────────────────────────
     if (appState === "idle") {
-      if (animFrame.current) cancelAnimationFrame(animFrame.current);
-      homeM.current?.remove(); homeM.current = null;
-      trail.current?.remove(); trail.current = null;
-      planned.current?.remove(); planned.current = null;
-      m.setLatLng(HOME); wpIdx.current = 0; prog.current = 0;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      homeMarkerRef.current?.remove();  homeMarkerRef.current = null;
+      trailRef.current?.remove();       trailRef.current = null;
+      plannedPathRef.current?.remove(); plannedPathRef.current = null;
+      weedMarkersRef.current.forEach((m) => m.remove());
+      weedMarkersRef.current = [];
+      sprayMarkersRef.current.forEach((m) => m.remove());
+      sprayMarkersRef.current = [];
+      marker.setLatLng(HOME);
+      map.setView(HOME, MAP_ZOOM);
+      waypointIndexRef.current = 0;
+      progressRef.current      = 0;
+      setActiveSprayIdx(null);
     } else if (appState === "completed" || appState === "aborted") {
-      if (animFrame.current) cancelAnimationFrame(animFrame.current);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      setActiveSprayIdx(null);
     }
-  }, [appState]);
+  }, [appState, weedWaypoints, isSprayMode]);
+
+  // ── Spray status label ─────────────────────────────────────────────────────
+  const sprayLabel =
+    activeSprayIdx !== null
+      ? `💧 Spraying Zone ${activeSprayIdx + 1}`
+      : appState === "executing"
+      ? "🚁 In Flight"
+      : null;
 
   return (
-    <div className="map-container relative group h-full" style={{ minHeight: 200 }}>
-      <div ref={mapRef} className="w-full h-full"/>
+    // IMPORTANT: position:relative + overflow:visible so the coordinate HUD
+    // renders above the Leaflet map stacking context instead of being clipped.
+    <div className="glass-card-glow relative group h-full" style={{ overflow: "visible" }}>
+      {/* Map tile — overflow hidden only on the map div itself */}
+      <div
+        ref={mapRef}
+        className="w-full h-full min-h-[200px] rounded-lg overflow-hidden"
+        style={{ background: "hsl(var(--muted) / 0.3)" }}
+      />
+
+      {/* ── Flight status HUD — sits ABOVE the map via z-index + absolute on parent ── */}
       {appState === "executing" && (
-        <div className="absolute bottom-2 left-2 z-[1000] flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 text-[11px] font-mono shadow-sm">
+        <div
+          className="absolute bottom-3 left-3 glass-card px-3 py-1.5 flex items-center gap-3 text-xs font-mono"
+          style={{ zIndex: 9999 }}   // explicit inline ensures it beats Leaflet's z-index
+        >
+          {sprayLabel && (
+            <span
+              className="text-success font-semibold mr-1 animate-pulse"
+              style={{ color: activeSprayIdx !== null ? "hsl(var(--success))" : "hsl(var(--warning))" }}
+            >
+              {sprayLabel}
+            </span>
+          )}
           <span className="text-muted-foreground">LAT</span>
-          <span className="text-foreground font-semibold">{coords[0].toFixed(5)}</span>
+          <span className="text-foreground font-semibold">{coords[0].toFixed(6)}</span>
           <span className="text-muted-foreground">LNG</span>
-          <span className="text-foreground font-semibold">{coords[1].toFixed(5)}</span>
+          <span className="text-foreground font-semibold">{coords[1].toFixed(6)}</span>
         </div>
       )}
-      <button className="absolute top-2 right-2 z-[1000] w-7 h-7 rounded-md bg-white/90 border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
-        <Maximize2 className="w-3.5 h-3.5 text-foreground"/>
+
+      <button
+        className="absolute top-3 right-3 w-8 h-8 rounded-md bg-muted/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+        style={{ zIndex: 9999 }}
+      >
+        <Maximize2 className="w-4 h-4 text-foreground" />
       </button>
     </div>
   );

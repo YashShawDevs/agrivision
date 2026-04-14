@@ -1,108 +1,124 @@
 /**
- * api.ts — Unified SAGE AI + AgriVision API client
- * Covers laptop → cloud → edge inference pathway.
+ * SAGE AI Backend API client.
+ * Base URL from VITE_API_URL (default: http://localhost:8000).
  */
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-async function api<T>(path: string, opts: RequestInit = {}, timeoutMs = 100_000): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+export interface MissionPhaseResponse {
+  id: number;
+  name: string;
+  duration: number;
+}
+
+export interface ConfidenceFactorResponse {
+  label: string;
+  value: number;
+}
+
+export interface GenerateMissionResponse {
+  missionSummary: string;
+  missionPhases: MissionPhaseResponse[];
+  confidenceScore: number;
+  confidenceFactors: ConfidenceFactorResponse[];
+  estimatedDuration: number;
+  warnings: string[];
+}
+
+export interface ActionResponse {
+  success: boolean;
+  message: string;
+}
+
+// ── Weed zone types (from AgriVision module) ──────────────────────────────────
+export interface WeedZone {
+  id: string;
+  lat: number;
+  lon: number;
+  confidence: number;
+  weed_type: string;
+  spray: boolean;
+}
+
+export interface WeedMapResponse {
+  type: string;
+  total_zones: number;
+  features: Array<{
+    type: string;
+    geometry: { type: string; coordinates: number[][][] };
+    properties: {
+      id: string;
+      weed_type: string;
+      confidence: number;
+      spray: boolean;
+      lat: number;
+      lon: number;
+    };
+  }>;
+}
+
+async function fetchApi<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail || `HTTP ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export async function generateMission(
+  missionInput: string
+): Promise<GenerateMissionResponse> {
+  return fetchApi<GenerateMissionResponse>("/api/generate-mission", {
+    method: "POST",
+    body: JSON.stringify({ missionInput }),
+  });
+}
+
+export async function executeMission(): Promise<ActionResponse> {
+  return fetchApi<ActionResponse>("/api/execute", { method: "POST" });
+}
+
+export async function abortMission(): Promise<ActionResponse> {
+  return fetchApi<ActionResponse>("/api/abort", { method: "POST" });
+}
+
+export async function returnHome(): Promise<ActionResponse> {
+  return fetchApi<ActionResponse>("/api/return-home", { method: "POST" });
+}
+
+/**
+ * Fetch weed spray zones from the AgriVision/detection module.
+ * Falls back gracefully if endpoint not yet available.
+ */
+export async function getWeedMap(): Promise<WeedMapResponse | null> {
   try {
-    const res = await fetch(`${BASE}${path}`, {
-      ...opts,
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json", ...opts.headers },
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error((e as { detail?: string }).detail || `HTTP ${res.status}`);
-    }
-    return res.json();
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === "AbortError")
-      throw new Error("Request timed out — Gemini is taking too long, please retry");
-    throw err;
-  } finally {
-    clearTimeout(timer);
+    return await fetchApi<WeedMapResponse>("/api/weed-map");
+  } catch {
+    return null;
   }
 }
 
-// ── SAGE AI ────────────────────────────────────────────────────────────────
-export interface MissionPhaseResponse   { id: number; name: string; duration: number }
-export interface ConfidenceFactorResponse { label: string; value: number }
-export interface GenerateMissionResponse {
-  missionSummary: string; missionPhases: MissionPhaseResponse[];
-  confidenceScore: number; confidenceFactors: ConfidenceFactorResponse[];
-  estimatedDuration: number; warnings: string[];
+/**
+ * Extract ordered [lat, lon] waypoints from weed map response.
+ * Returns null if no data — caller must handle fallback.
+ */
+export function weedZonesToWaypoints(
+  map: WeedMapResponse
+): [number, number][] | null {
+  const sprayZones = map.features.filter((f) => f.properties.spray);
+  if (sprayZones.length === 0) return null;
+  return sprayZones.map((f) => [f.properties.lat, f.properties.lon]);
 }
-export interface ActionResponse { success: boolean; message: string }
-
-export const generateMission = (missionInput: string) =>
-  api<GenerateMissionResponse>("/api/generate-mission", { method:"POST", body: JSON.stringify({missionInput}) });
-export const executeMission  = () => api<ActionResponse>("/api/execute",     { method:"POST" });
-export const abortMission    = () => api<ActionResponse>("/api/abort",       { method:"POST" });
-export const returnHome      = () => api<ActionResponse>("/api/return-home", { method:"POST" });
-
-export interface SimMode { mission_sim: boolean; weed_demo: boolean }
-export const getSimMode    = ()                  => api<SimMode>("/api/sim-mode");
-export const setMissionSim = (enabled: boolean)  => api<SimMode>("/api/sim-mode/mission?enabled=" + enabled, { method:"POST" });
-export const setWeedDemo   = (enabled: boolean)  => api<SimMode>("/api/sim-mode/weed?enabled="    + enabled, { method:"POST" });
-
-// ── AgriVision types ───────────────────────────────────────────────────────
-export interface Detection {
-  id: string; class: string; conf: number;
-  bbox: [number,number,number,number];
-  lat: number; lon: number;
-  polygon: number[][]; spray: boolean; frame?: number;
-}
-export interface ImageResult {
-  job_id: string; detections: Detection[];
-  weed_count: number; crop_count: number; annotated_url: string;
-}
-export interface VideoJob {
-  job_id: string; status: "processing"|"completed"|"failed"; progress: number;
-  result?: { weed_count:number; crop_count:number; total_frames:number; annotated_url:string };
-  error?: string;
-}
-export interface SavingsReport {
-  hectares_scanned: number; total_detections: number;
-  weed_count: number; crop_count: number; weed_density_percent: number;
-  blanket_spray_liters: number; precision_spray_liters: number;
-  chemical_saved_liters: number; cost_saved_inr: number; savings_percent: number;
-}
-export interface FieldInfo {
-  field_center_lat: number; field_center_lon: number; field_hectares: number;
-  scan_duration_sec: number; weed_zone_count: number;
-  bounds: { north:number; south:number; east:number; west:number } | null;
-  inference_mode: string;
-}
-export interface GeoJSON {
-  type: "FeatureCollection"; total_zones: number;
-  features: { type:"Feature"; geometry:{type:"Polygon";coordinates:number[][][]};
-    properties:{id:string;weed_type:string;confidence:number;spray:boolean;lat:number;lon:number} }[];
-}
-export interface SystemStatus {
-  drone: { battery:number|null; altitude:number|null; latitude:number|null;
-           longitude:number|null; gpsLock:boolean|null; executing:boolean };
-  weeds: SavingsReport; field: FieldInfo;
-}
-
-// ── AgriVision calls ───────────────────────────────────────────────────────
-export async function detectImage(file: File): Promise<ImageResult> {
-  const fd = new FormData(); fd.append("file", file);
-  const r = await fetch(`${BASE}/api/detect/image`, { method:"POST", body:fd });
-  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || `HTTP ${r.status}`);
-  return r.json();
-}
-export async function detectVideo(file: File): Promise<{job_id:string;status:string}> {
-  const fd = new FormData(); fd.append("file", file);
-  const r = await fetch(`${BASE}/api/detect/video`, { method:"POST", body:fd });
-  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || `HTTP ${r.status}`);
-  return r.json();
-}
-export const pollJob       = (id: string) => api<VideoJob>(`/api/detect/status/${id}`);
-export const getWeedMap    = ()           => api<GeoJSON>("/api/weed-map");
-export const clearWeedMap  = ()           => api<{cleared:boolean}>("/api/weed-map/clear", {method:"POST"});
-export const getSavings    = ()           => api<SavingsReport>("/api/savings");
-export const getFieldInfo  = ()           => api<FieldInfo>("/api/field-info");
-export const getStatus     = ()           => api<SystemStatus>("/api/status");
