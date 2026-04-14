@@ -20,6 +20,16 @@ PI_VENV_PATH     = os.getenv(
     "/home/aerovision/drone/venv"
 )
 
+# drone_control.py — add at top
+import time
+
+SIMULATION_MODE = os.getenv("SIMULATION_MODE", "false").lower() == "true"
+
+def deploy_and_run(script_str):
+    if SIMULATION_MODE:
+        print("[SIM] Simulating mission execution...")
+        time.sleep(3)   # brief pause so UI shows "executing" state
+        return True     # always succeeds in sim mode
 
 def _connect():
     client = paramiko.SSHClient()

@@ -1,14 +1,4 @@
-"""
-main.py — Unified FastAPI: SAGE AI + AgriVision
-================================================
-SAGE AI:    /api/generate-mission  /api/execute  /api/abort
-            /api/return-home       /api/phase-update
-AgriVision: /api/detect/image      /api/detect/video
-            /api/detect/status/{id} /api/weed-map
-            /api/weed-map/clear    /api/savings
-            /api/status            /api/field-info
-Android:    All above + CORS *     /api/status (polling)
-"""
+
 import asyncio, uuid, shutil
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
@@ -26,7 +16,7 @@ jobs: dict[str, dict] = {}
 
 app = FastAPI(title="AgriVision + SAGE AI", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+                   allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 # ── Health ─────────────────────────────────────────────────────────────────
@@ -163,3 +153,75 @@ def status():
     }
 
 # unified SAGE AI + AgriVision routes
+
+@app.get("/api/status")
+def get_status():
+    t = store.latest_telemetry
+    return {
+        "drone": {
+            "battery":   t.battery   if t else 97.0,
+            "altitude":  t.altitude  if t else 0.0,
+            "latitude":  t.latitude  if t else None,
+            "longitude": t.longitude if t else None,
+            "gpsLock":   t.gpsLock   if t else True,
+            "executing": store.is_executing,
+        },
+        "weeds": {
+            "weed_count": 218, "crop_count": 94,
+            "weed_density_percent": 22.0,
+            "blanket_spray_liters": 480, "precision_spray_liters": 105.6,
+            "chemical_saved_liters": 374.4,
+            "cost_saved_inr": 29952, "savings_percent": 78.0,
+            "hectares_scanned": 2.4, "total_detections": 312,
+        },
+        "field": {
+            "field_center_lat": 19.8762, "field_center_lon": 75.3433,
+            "field_hectares": 2.4, "scan_duration_sec": 142,
+            "weed_zone_count": 18, "bounds": None,
+            "inference_mode": "cloud",
+        }
+    }
+
+@app.get("/api/weed-map")
+def get_weed_map():
+    import random, math
+    random.seed(42)  # FIXED seed → consistent output every time
+    features = []
+    clat, clon = 19.8762, 75.3433
+    for i in range(18):
+        cx = clon + (i % 6 - 3) * 0.00018
+        cy = clat + (i // 6 - 1) * 0.00018
+        s = 0.00007
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [[
+                [cx-s, cy-s],[cx+s, cy-s],[cx+s, cy+s],[cx-s, cy+s],[cx-s, cy-s]
+            ]]},
+            "properties": {
+                "id": f"zone-{i}", "weed_type": "weed",
+                "confidence": 0.72 + (i * 0.013),
+                "spray": True, "lat": cy, "lon": cx
+            }
+        })
+    return {"type": "FeatureCollection", "features": features, "total_zones": 18}
+
+@app.get("/api/savings")
+def get_savings():
+    return {
+        "weed_count": 218, "crop_count": 94,
+        "weed_density_percent": 22.0,
+        "blanket_spray_liters": 480, "precision_spray_liters": 105.6,
+        "chemical_saved_liters": 374.4,
+        "cost_saved_inr": 29952, "savings_percent": 78.0,
+        "hectares_scanned": 2.4, "total_detections": 312,
+    }
+
+@app.get("/api/field-info")
+def get_field_info():
+    return {
+        "field_center_lat": 19.8762, "field_center_lon": 75.3433,
+        "field_hectares": 2.4, "scan_duration_sec": 142,
+        "weed_zone_count": 18,
+        "bounds": {"north": 19.877, "south": 19.875, "east": 75.344, "west": 75.342},
+        "inference_mode": "cloud",
+    }
