@@ -41,7 +41,11 @@ function WeedMap({ geojson, fieldInfo }: { geojson: GeoJSON|null; fieldInfo: Fie
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !geojson) return;
+    if (!map || !geojson) {
+      // Clear existing layer when geojson is null (reset)
+      layRef.current?.remove(); layRef.current = null;
+      return;
+    }
     layRef.current?.remove(); layRef.current = null;
     if (!geojson.features.length) return;
 

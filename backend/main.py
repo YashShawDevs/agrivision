@@ -31,13 +31,13 @@ def get_sim_mode():
 
 @app.post("/api/sim-mode/mission")
 def set_mission_sim(enabled: bool):
-    sim.mission_sim = enabled
+    sim.set_mission_sim(enabled)
     print(f"[SIM] Mission simulation: {'ON' if enabled else 'OFF'}")
     return {"mission_sim": sim.mission_sim}
 
 @app.post("/api/sim-mode/weed")
 def set_weed_demo(enabled: bool):
-    sim.weed_demo = enabled
+    sim.set_weed_demo(enabled)
     print(f"[SIM] Weed demo mode: {'ON' if enabled else 'OFF'}")
     return {"weed_demo": sim.weed_demo}
 
@@ -70,8 +70,10 @@ async def generate_mission(req: GenerateMissionRequest):
 
 @app.post("/api/execute", response_model=ActionResponse)
 async def execute():
-    if not store.has_mission(): raise HTTPException(400, "No mission generated yet.")
-    if store.is_executing:      raise HTTPException(409, "Already executing.")
+    if not sim.mission_sim and not store.has_mission():
+        raise HTTPException(400, "No mission generated yet.")
+    if store.is_executing:
+        raise HTTPException(409, "Already executing.")
     store.is_executing = True
     try:
         ok = await asyncio.to_thread(drone_control.deploy_and_run, store.script)

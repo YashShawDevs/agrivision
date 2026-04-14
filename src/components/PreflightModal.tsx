@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const CHECKS = [
   "Connecting to drone…", "Checking battery levels…", "Verifying GPS signal…",
@@ -24,6 +24,8 @@ export function PreflightModal({ open, step, onStepChange, onComplete }: Props) 
   return (
     <Dialog open={open}>
       <DialogContent className="card-base max-w-sm [&>button]:hidden">
+        <DialogTitle className="sr-only">Pre-flight Checklist</DialogTitle>
+        <DialogDescription className="sr-only">Verifying all systems before launch</DialogDescription>
         <div className="space-y-5 py-1">
           <div className="text-center">
             <h2 className="text-base font-semibold text-foreground">Pre-flight Checklist</h2>
