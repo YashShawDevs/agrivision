@@ -62,7 +62,7 @@ class WeedDetector:
 
     def process_image(self, in_path: str, out_path: str) -> dict:
         self._load()
-        if self._model is None:
+        if self._model is None or __import__('sim_store').sim.weed_demo:
             return self._demo_image(in_path, out_path)
         results = self._model.predict(source=in_path, save=False, conf=0.30, verbose=False)
         r = results[0]
@@ -71,7 +71,7 @@ class WeedDetector:
 
     def process_video(self, in_path: str, out_path: str) -> dict:
         self._load()
-        if self._model is None:
+        if self._model is None or __import__('sim_store').sim.weed_demo:
             return self._demo_video()
         import cv2
         cap   = cv2.VideoCapture(in_path)

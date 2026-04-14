@@ -1,7 +1,8 @@
-import os
+import os, time
 import paramiko
 from dotenv import load_dotenv
 from mission_store import store
+from sim_store import sim
 
 load_dotenv()
 
@@ -9,21 +10,8 @@ PI_HOST          = os.getenv("PI_HOST", "10.29.186.253")
 PI_USER          = os.getenv("PI_USER", "aerovision")
 PI_PASSWORD      = os.getenv("PI_PASSWORD", "12345678")
 PI_KEY_PATH      = os.getenv("PI_KEY_PATH", None)
-
-PI_REMOTE_SCRIPT = os.getenv(
-    "PI_SCRIPT_PATH",
-    "/home/aerovision/drone/sage_mission.py"
-)
-
-PI_VENV_PATH     = os.getenv(
-    "PI_VENV_PATH",
-    "/home/aerovision/drone/venv"
-)
-
-# drone_control.py — add at top
-import time
-
-SIMULATION_MODE = os.getenv("SIMULATION_MODE", "false").lower() == "true"
+PI_REMOTE_SCRIPT = os.getenv("PI_SCRIPT_PATH", "/home/aerovision/drone/sage_mission.py")
+PI_VENV_PATH     = os.getenv("PI_VENV_PATH", "/home/aerovision/drone/venv")
 
 def _connect():
     client = paramiko.SSHClient()
@@ -70,7 +58,7 @@ def _upload_script(client, script_str):
 
 
 def deploy_and_run(script_str):
-    if SIMULATION_MODE:
+    if sim.mission_sim:
         print("[SIM] Simulating mission execution...")
         time.sleep(3)
         return True

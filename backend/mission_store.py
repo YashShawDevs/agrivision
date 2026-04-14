@@ -12,12 +12,10 @@ class MissionStore:
     is_executing:     bool                        = False
     ssh_client:       Optional[paramiko.SSHClient] = None
     latest_telemetry: Optional[TelemetrySnapshot] = None
-    latest_telemetry: Optional[TelemetrySnapshot] = None
 
     def clear(self):
         self.script = self.summary = self.phases = self.ssh_client = self.latest_telemetry = None
         self.is_executing = False
-        self.latest_telemetry = None
 
     def has_mission(self) -> bool:
         return self.script is not None

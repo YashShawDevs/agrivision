@@ -1,4 +1,3 @@
-
 import asyncio, uuid, shutil
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
@@ -7,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from models import (GenerateMissionRequest, GenerateMissionResponse,
                     MissionPhase, ConfidenceFactor, ActionResponse, PhaseUpdateRequest)
 from mission_store import store
+from sim_store import sim
 import sage_ai, drone_control
 from agrivision import detector, weed_store
 
@@ -19,14 +19,29 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
-# ── Health ─────────────────────────────────────────────────────────────────
+# ── Health ──────────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"status": "AgriVision + SAGE AI running", "version": "2.0.0",
-            "endpoints": ["/api/generate-mission", "/api/detect/image",
-                          "/api/detect/video", "/api/weed-map", "/api/savings", "/api/status"]}
+    return {"status": "AgriVision + SAGE AI running", "version": "2.0.0"}
 
-# ── SAGE AI ────────────────────────────────────────────────────────────────
+# ── Simulation / Demo mode toggles ──────────────────────────────────────────
+@app.get("/api/sim-mode")
+def get_sim_mode():
+    return {"mission_sim": sim.mission_sim, "weed_demo": sim.weed_demo}
+
+@app.post("/api/sim-mode/mission")
+def set_mission_sim(enabled: bool):
+    sim.mission_sim = enabled
+    print(f"[SIM] Mission simulation: {'ON' if enabled else 'OFF'}")
+    return {"mission_sim": sim.mission_sim}
+
+@app.post("/api/sim-mode/weed")
+def set_weed_demo(enabled: bool):
+    sim.weed_demo = enabled
+    print(f"[SIM] Weed demo mode: {'ON' if enabled else 'OFF'}")
+    return {"weed_demo": sim.weed_demo}
+
+# ── SAGE AI ──────────────────────────────────────────────────────────────────
 @app.post("/api/generate-mission", response_model=GenerateMissionResponse)
 async def generate_mission(req: GenerateMissionRequest):
     if not req.missionInput.strip():
@@ -36,7 +51,9 @@ async def generate_mission(req: GenerateMissionRequest):
             asyncio.to_thread(sage_ai.generate_script, req.missionInput), timeout=90)
         plan = await asyncio.wait_for(
             asyncio.to_thread(sage_ai.generate_plan, req.missionInput), timeout=90)
-        store.script = script; store.summary = plan["missionSummary"]; store.phases = plan["missionPhases"]
+        store.script = script
+        store.summary = plan["missionSummary"]
+        store.phases = plan["missionPhases"]
         return GenerateMissionResponse(
             missionSummary=plan["missionSummary"],
             missionPhases=[MissionPhase(**p) for p in plan["missionPhases"]],
@@ -45,7 +62,7 @@ async def generate_mission(req: GenerateMissionRequest):
             estimatedDuration=int(plan["estimatedDuration"]),
             warnings=plan.get("warnings", []))
     except asyncio.TimeoutError:
-        raise HTTPException(504, "Mission generation timed out — Gemini took too long, please retry")
+        raise HTTPException(504, "Mission generation timed out — please retry")
     except ValueError as e:
         raise HTTPException(502, str(e))
     except Exception as e:
@@ -54,14 +71,15 @@ async def generate_mission(req: GenerateMissionRequest):
 @app.post("/api/execute", response_model=ActionResponse)
 async def execute():
     if not store.has_mission(): raise HTTPException(400, "No mission generated yet.")
-    if store.is_executing:     raise HTTPException(409, "Already executing.")
+    if store.is_executing:      raise HTTPException(409, "Already executing.")
     store.is_executing = True
     try:
         ok = await asyncio.to_thread(drone_control.deploy_and_run, store.script)
         store.is_executing = False
         return ActionResponse(success=ok, message="Mission completed" if ok else "Mission failed")
     except Exception as e:
-        store.is_executing = False; raise HTTPException(500, str(e))
+        store.is_executing = False
+        raise HTTPException(500, str(e))
 
 @app.post("/api/abort", response_model=ActionResponse)
 async def abort():
@@ -80,7 +98,7 @@ async def phase_update(u: PhaseUpdateRequest):
     if u.telemetry: store.latest_telemetry = u.telemetry
     return {"received": True, "phaseId": u.phaseId}
 
-# ── AgriVision ─────────────────────────────────────────────────────────────
+# ── AgriVision ───────────────────────────────────────────────────────────────
 @app.post("/api/detect/image")
 async def detect_image(file: UploadFile = File(...)):
     if not (file.content_type or "").startswith("image/"):
@@ -116,7 +134,7 @@ async def _video_bg(job_id, in_p, out_p):
         result = await asyncio.to_thread(detector.process_video, in_p, out_p)
         weed_store.add_detections(result["detections"])
         jobs[job_id] = {"status": "completed", "progress": 100,
-                        "result": {**{k:v for k,v in result.items() if k!="detections"},
+                        "result": {**{k: v for k, v in result.items() if k != "detections"},
                                    "annotated_url": f"/outputs/{Path(out_p).name}"}}
     except Exception as e:
         jobs[job_id] = {"status": "failed", "progress": 0, "error": str(e)}
@@ -140,7 +158,6 @@ def field_info(): return weed_store.get_field_info()
 
 @app.get("/api/status")
 def status():
-    """Unified status for dashboard + Android polling."""
     t = store.latest_telemetry
     return {
         "drone": {
@@ -153,78 +170,4 @@ def status():
         },
         "weeds": weed_store.get_savings_report(),
         "field": weed_store.get_field_info(),
-    }
-
-# unified SAGE AI + AgriVision routes
-
-@app.get("/api/status")
-def get_status():
-    t = store.latest_telemetry
-    return {
-        "drone": {
-            "battery":   t.battery   if t else 97.0,
-            "altitude":  t.altitude  if t else 0.0,
-            "latitude":  t.latitude  if t else None,
-            "longitude": t.longitude if t else None,
-            "gpsLock":   t.gpsLock   if t else True,
-            "executing": store.is_executing,
-        },
-        "weeds": {
-            "weed_count": 218, "crop_count": 94,
-            "weed_density_percent": 22.0,
-            "blanket_spray_liters": 480, "precision_spray_liters": 105.6,
-            "chemical_saved_liters": 374.4,
-            "cost_saved_inr": 29952, "savings_percent": 78.0,
-            "hectares_scanned": 2.4, "total_detections": 312,
-        },
-        "field": {
-            "field_center_lat": 19.8762, "field_center_lon": 75.3433,
-            "field_hectares": 2.4, "scan_duration_sec": 142,
-            "weed_zone_count": 18, "bounds": None,
-            "inference_mode": "cloud",
-        }
-    }
-
-@app.get("/api/weed-map")
-def get_weed_map():
-    import random, math
-    random.seed(42)  # FIXED seed → consistent output every time
-    features = []
-    clat, clon = 19.8762, 75.3433
-    for i in range(18):
-        cx = clon + (i % 6 - 3) * 0.00018
-        cy = clat + (i // 6 - 1) * 0.00018
-        s = 0.00007
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Polygon", "coordinates": [[
-                [cx-s, cy-s],[cx+s, cy-s],[cx+s, cy+s],[cx-s, cy+s],[cx-s, cy-s]
-            ]]},
-            "properties": {
-                "id": f"zone-{i}", "weed_type": "weed",
-                "confidence": 0.72 + (i * 0.013),
-                "spray": True, "lat": cy, "lon": cx
-            }
-        })
-    return {"type": "FeatureCollection", "features": features, "total_zones": 18}
-
-@app.get("/api/savings")
-def get_savings():
-    return {
-        "weed_count": 218, "crop_count": 94,
-        "weed_density_percent": 22.0,
-        "blanket_spray_liters": 480, "precision_spray_liters": 105.6,
-        "chemical_saved_liters": 374.4,
-        "cost_saved_inr": 29952, "savings_percent": 78.0,
-        "hectares_scanned": 2.4, "total_detections": 312,
-    }
-
-@app.get("/api/field-info")
-def get_field_info():
-    return {
-        "field_center_lat": 19.8762, "field_center_lon": 75.3433,
-        "field_hectares": 2.4, "scan_duration_sec": 142,
-        "weed_zone_count": 18,
-        "bounds": {"north": 19.877, "south": 19.875, "east": 75.344, "west": 75.342},
-        "inference_mode": "cloud",
     }

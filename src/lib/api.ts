@@ -43,6 +43,11 @@ export const executeMission  = () => api<ActionResponse>("/api/execute",     { m
 export const abortMission    = () => api<ActionResponse>("/api/abort",       { method:"POST" });
 export const returnHome      = () => api<ActionResponse>("/api/return-home", { method:"POST" });
 
+export interface SimMode { mission_sim: boolean; weed_demo: boolean }
+export const getSimMode    = ()                  => api<SimMode>("/api/sim-mode");
+export const setMissionSim = (enabled: boolean)  => api<SimMode>("/api/sim-mode/mission?enabled=" + enabled, { method:"POST" });
+export const setWeedDemo   = (enabled: boolean)  => api<SimMode>("/api/sim-mode/weed?enabled="    + enabled, { method:"POST" });
+
 // ── AgriVision types ───────────────────────────────────────────────────────
 export interface Detection {
   id: string; class: string; conf: number;

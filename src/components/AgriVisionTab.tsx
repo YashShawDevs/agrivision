@@ -11,6 +11,7 @@ import {
   getSavings, getFieldInfo,
   type Detection, type SavingsReport, type FieldInfo, type GeoJSON,
 } from "@/lib/api";
+import { SimToggle } from "@/components/SimToggle";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const FIELD_CENTER: [number, number] = [19.0760, 72.8777];
@@ -289,11 +290,14 @@ export function AgriVisionTab() {
           <Leaf className="w-4 h-4 text-green-600"/>
           <h2 className="text-sm font-semibold text-foreground">Weed Detection & Spray Mapping</h2>
         </div>
-        {state !== "idle" && (
-          <button onClick={reset} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-gray-100 transition-colors">
-            <RefreshCw className="w-3 h-3"/>New scan
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <SimToggle mode="weed" label="Demo Mode"/>
+          {state !== "idle" && (
+            <button onClick={reset} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-gray-100 transition-colors">
+              <RefreshCw className="w-3 h-3"/>New scan
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Upload zone ── */}
@@ -394,4 +398,4 @@ export function AgriVisionTab() {
   );
 }
 
-// AgriVision tab � weed detection UI
+// AgriVision tab � weed detection UI
