@@ -10,3 +10,5 @@ numpy>=1.24.3
 torch>=2.1.2
 pillow>=10.2.0
 paramiko>=3.4.0
+
+# updated deps
