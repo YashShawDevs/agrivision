@@ -161,3 +161,5 @@ def status():
         "weeds": weed_store.get_savings_report(),
         "field": weed_store.get_field_info(),
     }
+
+# unified SAGE AI + AgriVision routes
