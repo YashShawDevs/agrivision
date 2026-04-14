@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme — clean, bright, professional */
+    --background: 0 0% 97%;
+    --foreground: 220 15% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 12%;
+
+    /* Green primary — agriculture */
+    --primary: 142 70% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 142 30% 92%;
+    --secondary-foreground: 142 60% 25%;
+
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 38 95% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 95% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --success: 142 70% 35%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 220 10% 88%;
+    --input: 220 10% 88%;
+    --ring: 142 70% 35%;
+
+    --radius: 0.75rem;
+
+    /* Custom tokens */
+    --surface-1: 0 0% 100%;
+    --surface-2: 220 10% 96%;
+    --surface-3: 220 10% 93%;
+
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+  h1,h2,h3,h4,h5,h6 { @apply font-semibold tracking-tight; }
+}
+
+@layer components {
+  /* Clean card — white background, subtle shadow */
+  .card-base {
+    @apply bg-white border border-border rounded-xl shadow-sm;
+  }
+  .card-base-hover {
+    @apply card-base hover:shadow-md hover:border-primary/20 transition-all duration-200;
+  }
+
+  /* Section heading */
+  .section-label {
+    @apply text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground
+           flex items-center gap-2;
+  }
+  .section-label::after {
+    content: '';
+    @apply flex-1 h-px bg-border;
+  }
+
+  /* Status pill */
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+  .status-pill-green  { @apply bg-green-50  text-green-700  border border-green-200; }
+  .status-pill-amber  { @apply bg-amber-50  text-amber-700  border border-amber-200; }
+  .status-pill-red    { @apply bg-red-50    text-red-700    border border-red-200; }
+  .status-pill-blue   { @apply bg-blue-50   text-blue-700   border border-blue-200; }
+  .status-pill-gray   { @apply bg-gray-100  text-gray-600   border border-gray-200; }
+
+  /* Metric card */
+  .metric-card {
+    @apply bg-white border border-border rounded-lg p-4 flex flex-col gap-1;
+  }
+  .metric-card-highlight {
+    @apply bg-green-50 border border-green-200 rounded-lg p-4 flex flex-col gap-1;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply bg-primary text-primary-foreground font-semibold rounded-lg
+           hover:bg-primary/90 active:scale-[0.98] transition-all duration-150
+           shadow-sm hover:shadow-md;
+  }
+  .btn-success {
+    @apply bg-green-600 text-white font-semibold rounded-lg
+           hover:bg-green-700 active:scale-[0.98] transition-all duration-150;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white font-bold rounded-lg
+           hover:bg-red-700 active:scale-[0.98] transition-all duration-150;
+  }
+  .btn-warning {
+    @apply bg-amber-500 text-white font-semibold rounded-lg
+           hover:bg-amber-600 active:scale-[0.98] transition-all duration-150;
+  }
+  .btn-outline {
+    @apply border border-border bg-white text-foreground rounded-lg
+           hover:bg-gray-50 active:scale-[0.98] transition-all duration-150;
+  }
+
+  /* Input */
+  .input-base {
+    @apply w-full bg-white border border-border rounded-lg px-3 py-2.5
+           text-sm text-foreground placeholder:text-muted-foreground
+           focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
+           transition-all duration-150;
+  }
+
+  /* Tab button */
+  .tab-btn {
+    @apply flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+           transition-all duration-150 text-muted-foreground hover:text-foreground
+           hover:bg-gray-100;
+  }
+  .tab-btn-active {
+    @apply tab-btn bg-white text-foreground shadow-sm border border-border;
+  }
+
+  /* Map container */
+  .map-container {
+    @apply bg-gray-100 border border-border rounded-xl overflow-hidden;
+  }
+}
+
+@layer utilities {
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes spin-slow {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pulse-green {
+    0%,100% { box-shadow: 0 0 0 0 hsl(142 70% 35% / 0.3); }
+    50%      { box-shadow: 0 0 0 6px hsl(142 70% 35% / 0); }
+  }
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+  @keyframes check-bounce {
+    0%   { transform: scale(0); opacity: 0; }
+    60%  { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-fade-up      { animation: fade-up   0.35s ease-out forwards; }
+  .animate-fade-in      { animation: fade-in   0.25s ease-out forwards; }
+  .animate-slide-in     { animation: slide-in  0.3s  ease-out forwards; }
+  .animate-spin-slow    { animation: spin-slow 2s    linear infinite; }
+  .animate-pulse-green  { animation: pulse-green 2s ease-in-out infinite; }
+  .animate-check-bounce { animation: check-bounce 0.4s ease-out forwards; }
+  .animate-shimmer {
+    background: linear-gradient(90deg,transparent 0%,hsl(142 70% 35%/0.08) 50%,transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s infinite;
+  }
+}
