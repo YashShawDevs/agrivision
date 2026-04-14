@@ -1,12 +1,34 @@
 // constants/api.ts
-// ─────────────────────────────────────────────────────────────
-// Change BACKEND_URL to your laptop's IP when on the same WiFi.
-// Example: "http://192.168.1.100:8000"
-// ─────────────────────────────────────────────────────────────
+// Expo injects EXPO_PUBLIC_* variables at build time.
+// - EXPO_PUBLIC_BACKEND_URL=https://your-backend.example.com
+// - EXPO_PUBLIC_ALLOW_HTTP=true (only for trusted local testing)
 
-export const BACKEND_URL = "http://152.59.13.20:8000"; // IPv4 — laptop on same WiFi
+const REQUEST_TIMEOUT_MS = 8000;
+const RAW_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL?.trim() ?? "";
+const ALLOW_HTTP_IN_BUILD = process.env.EXPO_PUBLIC_ALLOW_HTTP === "true";
 
-// ── Types matching backend contracts ──────────────────────────
+function normalizeBackendUrl(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+
+  try {
+    const parsedUrl = new URL(rawUrl);
+    const isHttp = parsedUrl.protocol === "http:";
+    const isHttps = parsedUrl.protocol === "https:";
+
+    if (!isHttp && !isHttps) return null;
+    if (isHttp && !(__DEV__ || ALLOW_HTTP_IN_BUILD)) return null;
+
+    return parsedUrl.origin;
+  } catch {
+    return null;
+  }
+}
+
+export const BACKEND_URL = normalizeBackendUrl(RAW_BACKEND_URL);
+export const LIVE_BACKEND_CONFIG_ERROR =
+  RAW_BACKEND_URL && !BACKEND_URL
+    ? "Installed builds only allow https:// backends by default. Use EXPO_PUBLIC_ALLOW_HTTP=true only for trusted local testing."
+    : null;
 
 export interface Telemetry {
   battery: number | null;
@@ -69,18 +91,40 @@ export interface WeedZone {
   weed_type: string;
 }
 
-// ── API calls ──────────────────────────────────────────────────
-
 async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...opts.headers },
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((e as any).detail || `HTTP ${res.status}`);
+  if (!BACKEND_URL) {
+    throw new Error(LIVE_BACKEND_CONFIG_ERROR ?? "Live backend is not configured.");
   }
-  return res.json();
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
+      ...opts,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...opts.headers,
+      },
+    });
+
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error((errorBody as { detail?: string }).detail || `HTTP ${res.status}`);
+    }
+
+    return res.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Request timed out.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export const getStatus = () => api<SystemStatus>("/api/status");

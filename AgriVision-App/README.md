@@ -1,125 +1,125 @@
 # AgriVision Android App
 
-React Native (Expo) app for the AgriVision system.
-Works on any Android phone via Expo Go — no build or Play Store needed.
+Expo Router app for the AgriVision mobile client.
 
----
+## What changed for install safety
 
-## Project Structure
+- Removed the hard-coded backend IP from the app.
+- Disabled cleartext HTTP for installed Android builds by default.
+- Added request timeouts so the app fails fast instead of hanging.
+- Fixed chat safety so `Abort`, `Return to Home`, and mission execution need explicit confirmation.
+- Kept demo mode as the fallback when no safe backend is configured.
 
-```
+## Project structure
+
+```text
 AgriVision-App/
 ├── app/
-│   ├── _layout.tsx          # Root layout (GestureHandler + StatusBar)
+│   ├── _layout.tsx
 │   └── (tabs)/
-│       ├── _layout.tsx      # Tab bar (Dashboard / Weed Map / SAGE AI / Control)
-│       ├── index.tsx        # Dashboard screen
-│       ├── map.tsx          # Weed Map screen
-│       ├── chat.tsx         # SAGE AI Chat screen
-│       └── control.tsx      # Drone Control screen
+│       ├── _layout.tsx
+│       ├── index.tsx
+│       ├── map.tsx
+│       ├── chat.tsx
+│       └── control.tsx
+├── assets/
 ├── constants/
-│   └── api.ts               # Backend URL + all API calls + TypeScript types
+│   └── api.ts
 ├── hooks/
-│   └── useStatus.ts         # Polling hook — /api/status every 2s
-├── assets/                  # Icons / splash (add your own)
-├── app.json                 # Expo config
-├── babel.config.js
-├── tsconfig.json
+│   └── useStatus.ts
+├── .env.example
+├── app.json
+├── eas.json
 └── package.json
 ```
 
----
+## Safe setup
 
-## Setup (5 minutes)
+### 1) Install dependencies cleanly
 
-### 1. Install dependencies
+From `AgriVision-App`:
+
 ```bash
-cd AgriVision-App
 npm install
 ```
 
-### 2. Set your laptop's IP address
-Edit `constants/api.ts` line 7:
-```ts
-export const BACKEND_URL = "http://YOUR_LAPTOP_IP:8000";
+If `node_modules` already exists from an older install, delete it first and reinstall:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
 ```
-Find your IP:
-- Windows → `ipconfig` (look for IPv4 Address)
-- Mac/Linux → `ifconfig`
 
-Both laptop and phone must be on the **same WiFi network**.
+On Windows PowerShell, use:
 
-### 3. Start the backend (on your laptop)
+```powershell
+Remove-Item -Recurse -Force node_modules, package-lock.json
+npm install
+```
+
+### 2) Configure the backend URL
+
+Copy `.env.example` to `.env` inside `AgriVision-App`.
+
+```env
+EXPO_PUBLIC_BACKEND_URL=
+EXPO_PUBLIC_ALLOW_HTTP=false
+```
+
+Use one of these modes:
+
+- `https://your-server.example.com` for installed APK builds.
+- `http://YOUR_LAPTOP_IP:8000` only for trusted local testing.
+
+Important:
+
+- Installed Android builds now block plain `http://` by default.
+- If you really need local HTTP while testing, set `EXPO_PUBLIC_ALLOW_HTTP=true` before building.
+- Leaving `EXPO_PUBLIC_BACKEND_URL` empty keeps the app in demo mode.
+
+### 3) Start the backend
+
+From the repo root:
+
 ```bash
 cd backend
 venv\Scripts\uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4. Install Expo Go on your phone
-Download **Expo Go** from the Play Store (free).
+## Run options
 
-### 5. Start the app
+### Expo Go
+
+Best for quick testing on the same Wi-Fi:
+
 ```bash
 cd AgriVision-App
 npx expo start
 ```
-Scan the QR code with Expo Go. App opens instantly.
 
----
+### Installable APK
 
-## App Screens
+Build an APK with EAS:
 
-### Dashboard
-- Live telemetry: battery, altitude, GPS lock, mission status
-- Hero savings card: ₹ saved, % reduction, litres eliminated
-- Spray comparison (blanket vs precision)
-- Pull-to-refresh
-- Demo mode when backend is offline
-
-### Weed Map
-- All GPS weed zones with coordinates and confidence scores
-- Simulated field view with zone dots
-- Savings summary card
-- Polls `/api/weed-map` and `/api/savings`
-
-### SAGE AI Chat
-- Chatbot powered by Gemini
-- Intent routing: flight mission / weed query / abort / RTH / status
-- Quick suggestion chips
-- Approve & Execute button fires mission directly from chat
-- Demo fallbacks when backend offline
-
-### Control
-- Live telemetry strip
-- Edge vs Cloud mode toggle
-- D-Pad for manual drone movement
-- Emergency controls: ABORT (with confirmation) + Return to Home
-- Command log + spray test trigger
-
----
-
-## Demo Mode
-
-All screens work without a backend — they show realistic simulated data.
-The connection badge shows **Demo** vs **Live** clearly.
-
----
-
-## Architecture
-
+```bash
+cd AgriVision-App
+npx eas build -p android --profile preview
 ```
-Phone (Expo Go)
-    ↓ HTTP polling every 2s
-FastAPI Backend (laptop :8000)
-    ├── /api/status           ← dashboard polling
-    ├── /api/weed-map         ← weed zone list
-    ├── /api/savings          ← savings report
-    ├── /api/generate-mission ← SAGE AI chatbot
-    ├── /api/execute          ← mission execution
-    ├── /api/abort            ← emergency stop
-    └── /api/return-home      ← RTH command
-         ↓ SSH
-       RPi 5
-         ↓ MAVLink/DroneKit
-       Drone (Pixhawk)
-```
+
+The `preview` profile is configured to generate an APK directly.
+
+## Security notes
+
+- Do not put a public IP directly in source files.
+- Prefer HTTPS for any build you will install on your phone.
+- Do not expose the backend to the public internet without authentication.
+- Chat commands now require confirmation before sending flight-critical actions.
+
+## Recommended readiness checklist
+
+- `npm install` completes without dependency errors.
+- `.env` is set correctly.
+- Backend runs on port `8000`.
+- `npx expo start` opens successfully.
+- `npx eas build -p android --profile preview` completes successfully.
+- Installed APK shows `Live` only when a safe backend is configured; otherwise it stays in `Demo`.

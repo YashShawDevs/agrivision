@@ -17,18 +17,14 @@
         "backgroundColor": "#F7F3ED"
       },
       "package": "com.agrivision.app",
-      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"],
-      "usesCleartextTraffic": true
+      "versionCode": 1,
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
     },
     "plugins": [
       "expo-router",
       [
         "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
+        {}
       ]
     ],
     "experiments": {

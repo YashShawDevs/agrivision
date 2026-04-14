@@ -6,7 +6,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getWeedMap, getSavings, BACKEND_URL } from "../../constants/api";
+import { getWeedMap, getSavings } from "../../constants/api";
 
 const C = {
   paper: "#F7F3ED", paper2: "#F0EAE0", paper3: "#E8DFD2",

@@ -3,7 +3,6 @@ import React, { useState, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator,
-  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -61,10 +60,12 @@ function UserBubble({ msg }: { msg: Message }) {
   );
 }
 
-function SageBubble({ msg, onExecute, onAbort }: {
+function SageBubble({ msg, onExecute, onAbort, onReturnHome, onDismiss }: {
   msg: Message;
   onExecute: (msgId: string) => void;
-  onAbort: () => void;
+  onAbort: (msgId: string) => void;
+  onReturnHome: (msgId: string) => void;
+  onDismiss: (msgId: string, notice: string) => void;
 }) {
   if (msg.loading) {
     return (
@@ -116,16 +117,41 @@ function SageBubble({ msg, onExecute, onAbort }: {
               <Ionicons name="play" size={14} color={C.white} />
               <Text style={cs.btnExecuteText}>Approve & Execute</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={cs.btnCancel} onPress={onAbort}>
+            <TouchableOpacity
+              style={cs.btnCancel}
+              onPress={() => onDismiss(msg.id, "Mission execution cancelled.")}
+            >
               <Text style={cs.btnCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         )}
         {msg.action === "abort" && (
-          <TouchableOpacity style={cs.btnAbort} onPress={onAbort}>
-            <Ionicons name="warning" size={14} color={C.white} />
-            <Text style={cs.btnAbortText}>Confirm Abort</Text>
-          </TouchableOpacity>
+          <View style={cs.actionRow}>
+            <TouchableOpacity style={cs.btnAbort} onPress={() => onAbort(msg.id)}>
+              <Ionicons name="warning" size={14} color={C.white} />
+              <Text style={cs.btnAbortText}>Confirm Abort</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={cs.btnCancel}
+              onPress={() => onDismiss(msg.id, "Abort cancelled.")}
+            >
+              <Text style={cs.btnCancelText}>Keep Flying</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {msg.action === "rth" && (
+          <View style={cs.actionRow}>
+            <TouchableOpacity style={cs.btnExecute} onPress={() => onReturnHome(msg.id)}>
+              <Ionicons name="home" size={14} color={C.white} />
+              <Text style={cs.btnExecuteText}>Confirm Return Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={cs.btnCancel}
+              onPress={() => onDismiss(msg.id, "Return to Home cancelled.")}
+            >
+              <Text style={cs.btnCancelText}>Stay on Mission</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </View>
@@ -180,18 +206,17 @@ export default function ChatScreen() {
 
     try {
       if (intent === "abort") {
-        await abortMission().catch(() => {});
         updateMsg(loadId, {
           loading: false,
-          text: "⚠️ Abort command sent. Drone switching to LAND mode. All motors will stop at current position.",
+          text: "⚠️ Abort requested. Confirm before sending an emergency landing command to the drone.",
           action: "abort",
         });
 
       } else if (intent === "rth") {
-        await returnHome().catch(() => {});
         updateMsg(loadId, {
           loading: false,
-          text: "🏠 Return to Home initiated. Drone climbing to RTL altitude, then navigating back to launch point.",
+          text: "🏠 Return to Home requested. Confirm before instructing the drone to return to launch.",
+          action: "rth",
         });
 
       } else if (intent === "status") {
@@ -273,9 +298,15 @@ export default function ChatScreen() {
     }
 
     setSending(false);
-  }, [input, sending, messages]);
+  }, [input, sending]);
+
+  const dismissAction = (msgId: string, notice: string) => {
+    updateMsg(msgId, { action: undefined });
+    addMsg({ role: "system", text: notice });
+  };
 
   const handleExecute = async (msgId: string) => {
+    updateMsg(msgId, { action: undefined });
     addMsg({ role: "system", text: "⚡ Executing mission — connecting to drone via RPi…" });
     try {
       const res = await executeMission();
@@ -285,9 +316,20 @@ export default function ChatScreen() {
     }
   };
 
-  const handleAbort = async () => {
+  const handleAbort = async (msgId: string) => {
+    updateMsg(msgId, { action: undefined });
     try { await abortMission(); } catch {}
     addMsg({ role: "system", text: "🛑 Abort signal sent to drone." });
+  };
+
+  const handleReturnHome = async (msgId: string) => {
+    updateMsg(msgId, { action: undefined });
+    try {
+      await returnHome();
+      addMsg({ role: "system", text: "🏠 Return to Home signal sent to drone." });
+    } catch {
+      addMsg({ role: "system", text: "🏠 Return to Home triggered (demo mode)." });
+    }
   };
 
   return (
@@ -311,7 +353,15 @@ export default function ChatScreen() {
         renderItem={({ item }) => {
           if (item.role === "user") return <UserBubble msg={item} />;
           if (item.role === "system") return <SystemMsg msg={item} />;
-          return <SageBubble msg={item} onExecute={handleExecute} onAbort={handleAbort} />;
+          return (
+            <SageBubble
+              msg={item}
+              onExecute={handleExecute}
+              onAbort={handleAbort}
+              onReturnHome={handleReturnHome}
+              onDismiss={dismissAction}
+            />
+          );
         }}
       />
 
@@ -401,7 +451,7 @@ const cs = StyleSheet.create({
   btnExecuteText:{ color: C.white, fontWeight: "700", fontSize: 13 },
   btnCancel: { backgroundColor: C.paper3, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
   btnCancelText:{ color: C.ink2, fontWeight: "600", fontSize: 13 },
-  btnAbort:  { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.danger, borderRadius: 8, paddingVertical: 12, marginTop: 8 },
+  btnAbort:  { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.danger, borderRadius: 8, paddingVertical: 12 },
   btnAbortText:{ color: C.white, fontWeight: "700", fontSize: 13 },
 
   systemRow: { alignItems: "center" },
