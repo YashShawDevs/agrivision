@@ -4,15 +4,27 @@
  */
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts, headers: { "Content-Type": "application/json", ...opts.headers },
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((e as { detail?: string }).detail || `HTTP ${res.status}`);
+async function api<T>(path: string, opts: RequestInit = {}, timeoutMs = 100_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      ...opts,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...opts.headers },
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error((e as { detail?: string }).detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError")
+      throw new Error("Request timed out — Gemini is taking too long, please retry");
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 // ── SAGE AI ────────────────────────────────────────────────────────────────

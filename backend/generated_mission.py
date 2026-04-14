@@ -1,88 +1,3 @@
-"""
-================================================================================
- Autonomous Drone Flight Script
- Hardware : Pixhawk (any variant) running ArduPilot / ArduCopter
- Libraries : DroneKit, pymavlink
- Mode     : GUIDED (GPS position-corrected, wind-resistant)
- Connection: /dev/ttyAMA0  @  921600 baud
-================================================================================
-IMPORTANT: Only edit run_mission() and the CONFIGURATION values in Section 1.
-Copy all other functions EXACTLY from the original — do not rewrite them.
-
- BEFORE RUNNING:
-   pip install dronekit pymavlink requests
-
- ── FOR AI ASSISTANTS MODIFYING THIS SCRIPT ─────────────────────────────────
- This script connects to a Pixhawk flight controller, performs pre-flight
- safety checks, then executes a fully autonomous flight mission.
-
- The mission is defined entirely inside run_mission() near the bottom.
- That is the ONLY function you normally need to edit to change flight behaviour.
-
- PHASE REPORTING — IMPORTANT:
-   Every phase in run_mission() MUST call complete_phase() when it finishes.
-   This reports progress back to the SAGE AI ground station.
-   The function signature is:
-       complete_phase(vehicle, phase_id, phase_name)
-   Example:
-       arm_and_takeoff(vehicle, takeoff_alt)
-       complete_phase(vehicle, 1, "Takeoff")
-
-       hover(vehicle, hover_time)
-       complete_phase(vehicle, 2, "Hover")
-
-       return_to_launch(vehicle)
-       complete_phase(vehicle, 3, "Return to Launch")
-
-   Phase IDs must start at 1 and increment by 1 for each phase.
-   Always call complete_phase() AFTER the action finishes, not before.
-   Never skip a phase — the ground station tracks every one.
-
- SIGNAL HANDLING — DO NOT REMOVE:
-   SIGTERM → triggers RTL mode  (sent by ground station for Return to Home)
-   SIGINT  → triggers LAND mode (sent by ground station for Abort)
-   These are already set up in Section 2. Do not modify them.
-
- DIRECTION TRANSLATION (plain English → NED):
-   "forward"  = North  (north= positive)
-   "backward" = South  (north= negative)
-   "right"    = East   (east=  positive)
-   "left"     = West   (east=  negative)
-   This assumes the drone is armed facing North. If the drone is armed
-   facing a different direction, adjust accordingly before flying.
-
- Quick-reference — what to change for common human requests:
-   "hover for X seconds"          → change HOVER_TIME in CONFIG, or pass a
-                                     different number into hover(vehicle, X)
-   "fly higher / lower"           → change TAKEOFF_ALTITUDE in CONFIG
-   "fly faster / slower"          → change GROUNDSPEED in CONFIG
-   "go North/South/East/West Xm"  → edit goto_ned_position() calls in
-                                     run_mission() — see NED GUIDE below
-   "add a waypoint"               → add a new goto_ned_position() + hover()
-                                     block inside run_mission()
-   "remove a waypoint"            → delete the corresponding goto_ned_position()
-                                     + hover() block from run_mission()
-   "change waypoint order"        → reorder the goto_ned_position() blocks
-                                     inside run_mission()
-
- ── NED COORDINATE SYSTEM GUIDE ─────────────────────────────────────────────
- All positions are relative to the HOME point (where the drone arms/takes off).
- The function signature is: goto_ned_position(vehicle, north, east, alt)
-
-   north= positive number  →  fly NORTH  (e.g. north=20  means 20m North)
-   north= negative number  →  fly SOUTH  (e.g. north=-20 means 20m South)
-   east=  positive number  →  fly EAST   (e.g. east=15   means 15m East)
-   east=  negative number  →  fly WEST   (e.g. east=-15  means 15m West)
-   alt=   always positive  →  altitude above ground in metres
-
- IMPORTANT: coordinates are ABSOLUTE from HOME, not relative to last position.
- Example — to fly a straight line 30m North then stop:
-     goto_ned_position(vehicle, north=30, east=0, alt=10)
- Example — to then fly 20m East from that point:
-     goto_ned_position(vehicle, north=30, east=20, alt=10)  ← north stays 30
-================================================================================
-"""
-
 import time
 import math
 import sys
@@ -104,9 +19,9 @@ CONNECTION_STRING = '/dev/ttyAMA0'  # Serial port where Pixhawk is connected
 BAUD_RATE         = 921600          # Must match the baud set on Pixhawk's serial port
 
 # ── FLIGHT PARAMETERS — change these to adjust flight behaviour ──────────────
-TAKEOFF_ALTITUDE  = 20              # How high to climb on takeoff (metres above ground)
+TAKEOFF_ALTITUDE  = 10              # How high to climb on takeoff (metres above ground)
 GROUNDSPEED       = 2.0             # How fast to fly between waypoints (metres per second)
-HOVER_TIME        = 15              # How many seconds to hover after takeoff before first waypoint
+HOVER_TIME        = 10              # How many seconds to hover after takeoff before first waypoint
 
 # ── NAVIGATION TUNING — usually no need to change these ──────────────────────
 ARRIVAL_THRESHOLD = 1.5             # metres — how close = "arrived at waypoint"
@@ -442,7 +357,7 @@ def run_mission(vehicle, takeoff_alt, groundspeed, hover_time):
     """
     Main flight plan. Edit the body of this function to change the mission.
 
-    Current plan: take off → hover at 20m for 15 seconds → RTL
+    Current plan: take off → hover → fly to Waypoint A (20m North, 10m East) → RTL
 
     Args:
         vehicle     : DroneKit vehicle object (passed in from main)
@@ -451,17 +366,24 @@ def run_mission(vehicle, takeoff_alt, groundspeed, hover_time):
         hover_time  : seconds to hover after takeoff before first waypoint
     """
 
-    # ── Phase 1: Arm and climb to takeoff altitude (20m) ─────────────────────
+    # ── Phase 1: Arm and climb to takeoff altitude ────────────────────────────
     arm_and_takeoff(vehicle, takeoff_alt)
-    complete_phase(vehicle, 1, "Takeoff to 20m")
+    complete_phase(vehicle, 1, "Takeoff")
 
-    # ── Phase 2: Hover at takeoff position for 15 seconds ─────────────────────
+    # ── Phase 2: Hover at takeoff position ────────────────────────────────────
     hover(vehicle, hover_time)
-    complete_phase(vehicle, 2, "Hover for 15s at 20m")
+    complete_phase(vehicle, 2, "Hover")
 
-    # ── Phase 3: Return to Home ───────────────────────────────────────────────
+    # ── Phase 3: Fly to Waypoint A (20m North, 10m East) ─────────────────────
+    # Assuming "Waypoint A" means 20m North and 10m East from home.
+    # Adjust north and east parameters as needed for a different location.
+    goto_ned_position(vehicle, north=20, east=10, alt=takeoff_alt, groundspeed=groundspeed)
+    hover(vehicle, 5) # Hover for 5 seconds at Waypoint A
+    complete_phase(vehicle, 3, "Fly to Waypoint A")
+
+    # ── Phase 4: Return to Home ───────────────────────────────────────────────
     return_to_launch(vehicle)
-    complete_phase(vehicle, 3, "Return to Launch")
+    complete_phase(vehicle, 4, "Return to Launch")
 
 
 # ============================================================

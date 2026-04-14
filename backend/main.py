@@ -32,9 +32,10 @@ async def generate_mission(req: GenerateMissionRequest):
     if not req.missionInput.strip():
         raise HTTPException(400, "Mission input cannot be empty")
     try:
-        script, plan = await asyncio.gather(
-            asyncio.to_thread(sage_ai.generate_script, req.missionInput),
-            asyncio.to_thread(sage_ai.generate_plan,   req.missionInput))
+        script = await asyncio.wait_for(
+            asyncio.to_thread(sage_ai.generate_script, req.missionInput), timeout=90)
+        plan = await asyncio.wait_for(
+            asyncio.to_thread(sage_ai.generate_plan, req.missionInput), timeout=90)
         store.script = script; store.summary = plan["missionSummary"]; store.phases = plan["missionPhases"]
         return GenerateMissionResponse(
             missionSummary=plan["missionSummary"],
@@ -43,6 +44,8 @@ async def generate_mission(req: GenerateMissionRequest):
             confidenceFactors=[ConfidenceFactor(**f) for f in plan["confidenceFactors"]],
             estimatedDuration=int(plan["estimatedDuration"]),
             warnings=plan.get("warnings", []))
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Mission generation timed out — Gemini took too long, please retry")
     except ValueError as e:
         raise HTTPException(502, str(e))
     except Exception as e:
