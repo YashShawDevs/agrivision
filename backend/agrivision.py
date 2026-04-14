@@ -225,3 +225,5 @@ class WeedStore:
 
 detector   = WeedDetector()
 weed_store = WeedStore()
+
+# GPS projection + savings report
