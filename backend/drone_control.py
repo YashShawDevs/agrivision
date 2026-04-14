@@ -25,12 +25,6 @@ import time
 
 SIMULATION_MODE = os.getenv("SIMULATION_MODE", "false").lower() == "true"
 
-def deploy_and_run(script_str):
-    if SIMULATION_MODE:
-        print("[SIM] Simulating mission execution...")
-        time.sleep(3)   # brief pause so UI shows "executing" state
-        return True     # always succeeds in sim mode
-
 def _connect():
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -76,6 +70,11 @@ def _upload_script(client, script_str):
 
 
 def deploy_and_run(script_str):
+    if SIMULATION_MODE:
+        print("[SIM] Simulating mission execution...")
+        time.sleep(3)
+        return True
+
     client = _connect()
     if not client:
         return False

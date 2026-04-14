@@ -140,9 +140,11 @@ def generate_script(user_input: str) -> str:
     )
     print("[SAGE] Flight script generated")
 
-    with open("generated_mission.py", "w", encoding="utf-8") as f:
+    _out_path = os.path.join(os.path.dirname(__file__), "outputs", "generated_mission.py")
+    os.makedirs(os.path.dirname(_out_path), exist_ok=True)
+    with open(_out_path, "w", encoding="utf-8") as f:
         f.write(script)
-    print("[SAGE] Debug: script saved to generated_mission.py")
+    print(f"[SAGE] Debug: script saved to {_out_path}")
 
     return script
 
