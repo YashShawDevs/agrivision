@@ -393,3 +393,5 @@ export function AgriVisionTab() {
     </div>
   );
 }
+
+// AgriVision tab — weed detection UI
