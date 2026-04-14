@@ -4,7 +4,7 @@
 // Example: "http://192.168.1.100:8000"
 // ─────────────────────────────────────────────────────────────
 
-export const BACKEND_URL = "http://192.168.1.100:8000"; // ← CHANGE THIS
+export const BACKEND_URL = "http://152.59.13.20:8000"; // IPv4 — laptop on same WiFi
 
 // ── Types matching backend contracts ──────────────────────────
 

@@ -3,6 +3,7 @@
     "name": "AgriVision",
     "slug": "agrivision-app",
     "version": "1.0.0",
+    "sdkVersion": "52.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "agrivision",
@@ -16,11 +17,19 @@
         "backgroundColor": "#F7F3ED"
       },
       "package": "com.agrivision.app",
-      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"],
+      "usesCleartextTraffic": true
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
