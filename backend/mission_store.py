@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import paramiko
-from models import TelemetrySnapshot
-from models import TelemetrySnapshot  
+from models import TelemetrySnapshot  # FIX: removed duplicate import that was on the next line
 
 @dataclass
 class MissionStore:

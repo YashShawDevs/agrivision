@@ -1,6 +1,23 @@
 import { useEffect, useState } from "react";
 import { Wifi, WifiOff, Leaf } from "lucide-react";
-import SMark from "@/assets/S.png";
+
+// Inline "S" mark — eliminates build-crash from missing S.png asset file
+function SMarkIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="20" height="20">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#16a6ff"/>
+          <stop offset="100%" stopColor="#22d3ee"/>
+        </linearGradient>
+      </defs>
+      <rect x="4" y="4" width="56" height="56" rx="14" fill="#020617"/>
+      <rect x="7" y="7" width="50" height="50" rx="12" fill="url(#bg)"/>
+      <text x="32" y="42" textAnchor="middle" fontFamily="system-ui, sans-serif"
+        fontSize="30" fill="#0f172a" fontWeight="700">S</text>
+    </svg>
+  );
+}
 
 interface HeaderProps { connected: boolean }
 
@@ -16,7 +33,7 @@ export function Header({ connected }: HeaderProps) {
       {/* Logo */}
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20">
-          <img src={SMark} alt="SAGE" className="w-5 h-5 object-contain" />
+          <SMarkIcon />
         </div>
         <div>
           <h1 className="text-base font-bold tracking-tight text-foreground leading-none">

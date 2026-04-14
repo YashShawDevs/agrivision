@@ -33,13 +33,15 @@ def get_sim_mode():
 def set_mission_sim(enabled: bool):
     sim.set_mission_sim(enabled)
     print(f"[SIM] Mission simulation: {'ON' if enabled else 'OFF'}")
-    return {"mission_sim": sim.mission_sim}
+    # FIX: return full SimMode object so TypeScript type is satisfied
+    return {"mission_sim": sim.mission_sim, "weed_demo": sim.weed_demo}
 
 @app.post("/api/sim-mode/weed")
 def set_weed_demo(enabled: bool):
     sim.set_weed_demo(enabled)
     print(f"[SIM] Weed demo mode: {'ON' if enabled else 'OFF'}")
-    return {"weed_demo": sim.weed_demo}
+    # FIX: return full SimMode object so TypeScript type is satisfied
+    return {"mission_sim": sim.mission_sim, "weed_demo": sim.weed_demo}
 
 # ── SAGE AI ──────────────────────────────────────────────────────────────────
 @app.post("/api/generate-mission", response_model=GenerateMissionResponse)

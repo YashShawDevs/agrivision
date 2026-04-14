@@ -2,8 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import droneMarkerImg from "@/assets/drone-marker.png";
 import type { AppState } from "@/hooks/useMissionState";
+
+// Inline drone marker — no external asset dependency, eliminates build-crash risk
+const DRONE_ICON_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' width='36' height='36'>
+    <circle cx='24' cy='24' r='22' fill='%23166534' stroke='%2322c55e' stroke-width='2'/>
+    <path d='M14 20h4v8h-4zM30 20h4v8h-4zM20 14v4h8v-4zM20 30v4h8v-4z' fill='%2322c55e'/>
+    <circle cx='24' cy='24' r='5' fill='white'/>
+    <circle cx='24' cy='24' r='2.5' fill='%23166534'/>
+  </svg>`
+)}`;
 
 const HOME: [number, number] = [15.32765, 73.93348];
 const WAYPOINTS: [number, number][] = [
@@ -28,7 +37,9 @@ export function LiveMap({ appState = "idle" }: { appState?: AppState }) {
     if (!mapRef.current || mapInst.current) return;
     const map = L.map(mapRef.current, { center: HOME, zoom: 16, zoomControl: false, attributionControl: false });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
-    const icon = L.icon({ iconUrl: droneMarkerImg, iconSize:[36,36], iconAnchor:[18,18] });
+
+    // Use SVG data-URI so the marker always renders regardless of asset pipeline
+    const icon = L.icon({ iconUrl: DRONE_ICON_SVG, iconSize:[36,36], iconAnchor:[18,18] });
     marker.current = L.marker(HOME, { icon }).addTo(map);
     mapInst.current = map;
     return () => { map.remove(); mapInst.current = null; marker.current = null; };

@@ -42,7 +42,6 @@ function WeedMap({ geojson, fieldInfo }: { geojson: GeoJSON|null; fieldInfo: Fie
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !geojson) {
-      // Clear existing layer when geojson is null (reset)
       layRef.current?.remove(); layRef.current = null;
       return;
     }
@@ -70,7 +69,8 @@ function WeedMap({ geojson, fieldInfo }: { geojson: GeoJSON|null; fieldInfo: Fie
   const zoneCount = geojson?.total_zones ?? 0;
 
   return (
-    <div className="card-base overflow-hidden" style={{ height: 340 }}>
+    // FIX: added `relative` so the absolute empty-state overlay positions correctly
+    <div className="card-base overflow-hidden relative" style={{ height: 340 }}>
       {/* Map header bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-gray-50">
         <div className="flex items-center gap-1.5">
@@ -100,8 +100,8 @@ function WeedMap({ geojson, fieldInfo }: { geojson: GeoJSON|null; fieldInfo: Fie
       </div>
       <div ref={divRef} className="w-full" style={{ height: 296 }}/>
       {(!geojson || !zoneCount) && (
-        <div className="absolute inset-12 flex flex-col items-center justify-center gap-2 pointer-events-none"
-          style={{ top:40 }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none"
+          style={{ top: 40 }}>
           <MapPin className="w-8 h-8 text-gray-300"/>
           <p className="text-xs text-gray-400">Spray zones appear after detection</p>
         </div>
@@ -226,12 +226,23 @@ export function AgriVisionTab() {
   const [drag, setDrag]           = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
+  // FIX: stopPoll is stable - no deps needed
   const stopPoll = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
+  // FIX: wrap refresh in useCallback so handleFile can safely depend on it
+  const refresh = useCallback(async () => {
+    const [g, sv, fi] = await Promise.all([getWeedMap(), getSavings(), getFieldInfo()]);
+    setGeojson(g); setSavings(sv); setFieldInfo(fi);
+  }, []);
+
   useEffect(() => {
     if (!jobId) return;
+
+    // FIX: always clear any existing interval before starting a new one
+    stopPoll();
+
     pollRef.current = setInterval(async () => {
       try {
         const s = await pollJob(jobId);
@@ -248,13 +259,9 @@ export function AgriVisionTab() {
       } catch {}
     }, 2000);
     return stopPoll;
-  }, [jobId, stopPoll]);
+  }, [jobId, stopPoll, refresh]);
 
-  const refresh = async () => {
-    const [g, sv, fi] = await Promise.all([getWeedMap(), getSavings(), getFieldInfo()]);
-    setGeojson(g); setSavings(sv); setFieldInfo(fi);
-  };
-
+  // FIX: refresh in deps array - no stale closure
   const handleFile = useCallback(async (file: File) => {
     setErrMsg(""); setDets([]); setAnnUrl(null); setState("uploading");
     try {
@@ -274,14 +281,14 @@ export function AgriVisionTab() {
       setErrMsg(e instanceof Error ? e.message : "Upload failed");
       setState("error");
     }
-  }, []);
+  }, [refresh]);
 
-  const reset = async () => {
+  const reset = useCallback(async () => {
     stopPoll(); setState("idle"); setDets([]); setAnnUrl(null);
     setJobId(null); setErrMsg("");
     await clearWeedMap();
     setGeojson(null); setSavings(null); setFieldInfo(null);
-  };
+  }, [stopPoll]);
 
   const busy = state === "uploading" || state === "processing";
 
@@ -401,5 +408,3 @@ export function AgriVisionTab() {
     </div>
   );
 }
-
-// AgriVision tab � weed detection UI

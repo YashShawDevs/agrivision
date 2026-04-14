@@ -42,24 +42,34 @@ export function useStatus() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // FIX: track mount state so we never call setState on an unmounted component
+  const mountedRef = useRef(true);
 
   const poll = async () => {
     try {
       const data = await getStatus();
+      // FIX: guard against calling setState after unmount
+      if (!mountedRef.current) return;
       setStatus(data);
       setConnected(true);
     } catch {
+      if (!mountedRef.current) return;
       setConnected(false);
       // Keep showing demo data when offline
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     poll();
     timerRef.current = setInterval(poll, POLL_INTERVAL);
     return () => {
+      // FIX: mark unmounted before clearing interval so in-flight fetch doesn't update state
+      mountedRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);

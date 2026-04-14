@@ -10,6 +10,9 @@ import os, math, uuid, time
 from pathlib import Path
 from typing import Optional
 
+# FIX: proper top-level import instead of fragile __import__() call inside methods
+from sim_store import sim
+
 # ── Config ─────────────────────────────────────────────────────────────────
 FIELD_CENTER_LAT   = float(os.getenv("FIELD_LAT",    "19.0760"))
 FIELD_CENTER_LON   = float(os.getenv("FIELD_LON",    "72.8777"))
@@ -18,10 +21,10 @@ CAMERA_FOV_DEG     = float(os.getenv("CAMERA_FOV",   "84"))
 FIELD_HECTARES     = float(os.getenv("FIELD_HA",     "2.4"))
 BLANKET_L_PER_HA   = float(os.getenv("BLANKET_RATE", "200"))
 COST_PER_L_INR     = float(os.getenv("HERBICIDE_COST","80"))
-INFERENCE_MODE     = os.getenv("INFERENCE_MODE", "laptop")   # laptop|cloud|edge
+INFERENCE_MODE     = os.getenv("INFERENCE_MODE", "laptop")
 MODEL_PATH         = os.getenv("YOLO_MODEL_PATH", "agrivision_best.pt")
-CLOUD_DETECT_URL   = os.getenv("CLOUD_DETECT_URL", "")       # future
-EDGE_DETECT_URL    = os.getenv("EDGE_DETECT_URL",  "")       # future RPi endpoint
+CLOUD_DETECT_URL   = os.getenv("CLOUD_DETECT_URL", "")
+EDGE_DETECT_URL    = os.getenv("EDGE_DETECT_URL",  "")
 SAMPLE_EVERY       = int(os.getenv("VIDEO_SAMPLE_EVERY", "10"))
 
 # ── GPS helpers ────────────────────────────────────────────────────────────
@@ -62,7 +65,8 @@ class WeedDetector:
 
     def process_image(self, in_path: str, out_path: str) -> dict:
         self._load()
-        if self._model is None or __import__('sim_store').sim.weed_demo:
+        # FIX: use properly imported `sim` rather than __import__('sim_store').sim
+        if self._model is None or sim.weed_demo:
             return self._demo_image(in_path, out_path)
         results = self._model.predict(source=in_path, save=False, conf=0.30, verbose=False)
         r = results[0]
@@ -71,8 +75,9 @@ class WeedDetector:
 
     def process_video(self, in_path: str, out_path: str) -> dict:
         self._load()
-        if self._model is None or __import__('sim_store').sim.weed_demo:
-            return self._demo_video()
+        # FIX: use properly imported `sim`
+        if self._model is None or sim.weed_demo:
+            return self._demo_video(in_path, out_path)
         import cv2
         cap   = cv2.VideoCapture(in_path)
         fps   = cap.get(cv2.CAP_PROP_FPS) or 25
@@ -88,7 +93,6 @@ class WeedDetector:
             if fi % SAMPLE_EVERY == 0:
                 results = self._model.predict(source=frame, conf=0.30, verbose=False)
                 out.write(results[0].plot())
-                # Simulate GPS drift along field
                 prog = fi / max(total, 1)
                 flat = FIELD_CENTER_LAT + prog * 0.001
                 flon = FIELD_CENTER_LON + prog * 0.001
@@ -146,8 +150,56 @@ class WeedDetector:
         ]
         return {"detections": dets, "weed_count": 3, "crop_count": 2}
 
-    def _demo_video(self):
-        return {"detections": [], "weed_count": 45, "crop_count": 87, "total_frames": 300}
+    def _demo_video(self, in_path: str, out_path: str) -> dict:
+        """
+        FIX: Previously returned detections=[] which left weed store empty after video upload.
+        Now returns realistic demo detections so the map, spray zones, and savings all populate.
+        The input video is copied as-is to out_path (no OpenCV needed in demo mode).
+        """
+        import shutil
+        try:
+            shutil.copy(in_path, out_path)
+        except Exception:
+            pass  # output file is optional in demo mode
+
+        # Simulate 8 weed zones spread across a 300-frame scan
+        base_lat = FIELD_CENTER_LAT
+        base_lon = FIELD_CENTER_LON
+        offsets = [
+            (0.00008,  0.00010, True,  "weed", 0.87,  0),
+            (-0.00005, 0.00015, True,  "weed", 0.74,  30),
+            (0.00012, -0.00008, False, "crop", 0.92,  30),
+            (-0.00010,-0.00012, True,  "weed", 0.81,  60),
+            (0.00005,  0.00020, False, "crop", 0.88,  60),
+            (0.00018,  0.00003, True,  "weed", 0.79,  90),
+            (-0.00003, 0.00025, True,  "weed", 0.83,  120),
+            (0.00022, -0.00015, True,  "weed", 0.76,  150),
+            (-0.00018, 0.00008, False, "crop", 0.91,  150),
+            (0.00010,  0.00030, True,  "weed", 0.85,  180),
+            (0.00030,  0.00012, True,  "weed", 0.72,  210),
+            (-0.00025,-0.00005, False, "crop", 0.89,  210),
+        ]
+        dets = []
+        for dlat, dlon, spray, cls, conf, frame in offsets:
+            lat = round(base_lat + dlat, 7)
+            lon = round(base_lon + dlon, 7)
+            dets.append({
+                "id": str(uuid.uuid4())[:8],
+                "class": cls,
+                "conf": conf,
+                "bbox": [100, 100, 200, 200],
+                "lat": lat,
+                "lon": lon,
+                "polygon": [[lon-0.00003, lat-0.00002], [lon+0.00003, lat-0.00002],
+                            [lon+0.00003, lat+0.00002], [lon-0.00003, lat+0.00002],
+                            [lon-0.00003, lat-0.00002]],
+                "spray": spray,
+                "frame": frame,
+            })
+        weed_count = sum(1 for d in dets if d["spray"])
+        crop_count = sum(1 for d in dets if not d["spray"])
+        return {"detections": dets, "weed_count": weed_count, "crop_count": crop_count, "total_frames": 300}
+
 
 # ── Weed Store ─────────────────────────────────────────────────────────────
 class WeedStore:
@@ -225,5 +277,3 @@ class WeedStore:
 
 detector   = WeedDetector()
 weed_store = WeedStore()
-
-# GPS projection + savings report

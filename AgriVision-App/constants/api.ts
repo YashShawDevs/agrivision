@@ -3,7 +3,11 @@
 // - EXPO_PUBLIC_BACKEND_URL=https://your-backend.example.com
 // - EXPO_PUBLIC_ALLOW_HTTP=true (only for trusted local testing)
 
-const REQUEST_TIMEOUT_MS = 8000;
+// FIX: Increased from 8000ms to 95000ms for mission generation calls.
+// The backend allows up to 90s for Gemini; 8s always timed out on mobile.
+// Non-mission calls (status, weed-map, savings) are fast enough that this is safe.
+const REQUEST_TIMEOUT_MS = 95_000;
+
 const RAW_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL?.trim() ?? "";
 const ALLOW_HTTP_IN_BUILD = process.env.EXPO_PUBLIC_ALLOW_HTTP === "true";
 
