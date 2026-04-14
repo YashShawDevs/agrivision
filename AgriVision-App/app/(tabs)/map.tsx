@@ -20,8 +20,8 @@ const C = {
 // Fake GPS zones for demo when backend offline
 const DEMO_ZONES = Array.from({ length: 18 }, (_, i) => ({
   id: `zone-${i}`,
-  lat: 19.8762 + (Math.random() - 0.5) * 0.001,
-  lon: 75.3433 + (Math.random() - 0.5) * 0.001,
+  lat: 19.0760 + (Math.random() - 0.5) * 0.001,
+  lon: 72.8777 + (Math.random() - 0.5) * 0.001,
   confidence: 0.72 + Math.random() * 0.24,
   weed_type: "weed",
   spray: true,
@@ -96,8 +96,8 @@ export default function MapScreen() {
         <View style={ms.mapInner}>
           <Ionicons name="map" size={40} color={C.ink3} style={{ opacity: 0.3 }} />
           <Text style={ms.mapTitle}>Field View</Text>
-          <Text style={ms.mapSub}>Aurangabad, Maharashtra</Text>
-          <Text style={ms.mapCoords}>19.8762°N · 75.3433°E</Text>
+          <Text style={ms.mapSub}>Mumbai, Maharashtra</Text>
+          <Text style={ms.mapCoords}>19.0760°N · 72.8777°E</Text>
 
           {/* Simulated weed dots on a grid */}
           <View style={ms.dotGrid}>

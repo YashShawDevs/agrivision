@@ -9,8 +9,8 @@ const DEMO_STATUS: SystemStatus = {
   drone: {
     battery: 87,
     altitude: 18.5,
-    latitude: 19.8762,
-    longitude: 75.3433,
+    latitude: 19.0760,
+    longitude: 72.8777,
     gpsLock: true,
     executing: false,
   },
@@ -27,12 +27,12 @@ const DEMO_STATUS: SystemStatus = {
     total_detections: 312,
   },
   field: {
-    field_center_lat: 19.8762,
-    field_center_lon: 75.3433,
+    field_center_lat: 19.0760,
+    field_center_lon: 72.8777,
     field_hectares: 2.4,
     scan_duration_sec: 142,
     weed_zone_count: 18,
-    bounds: { north: 19.877, south: 19.875, east: 75.344, west: 75.342 },
+    bounds: { north: 19.077, south: 19.075, east: 72.879, west: 72.876 },
     inference_mode: "cloud",
   },
 };

@@ -222,7 +222,7 @@ export default function ChatScreen() {
       } else if (intent === "status") {
         updateMsg(loadId, {
           loading: false,
-          text: "📡 Current telemetry:\n\n• Battery: 87%\n• Altitude: 18.5m AGL\n• GPS: Locked (strong fix)\n• Mission: Standby\n• Coordinates: 19.87620°N · 75.34330°E\n\nAll systems nominal.",
+          text: "📡 Current telemetry:\n\n• Battery: 87%\n• Altitude: 18.5m AGL\n• GPS: Locked (strong fix)\n• Mission: Standby\n• Coordinates: 19.07600°N · 72.87770°E\n\nAll systems nominal.",
         });
 
       } else if (intent === "weed_query") {
