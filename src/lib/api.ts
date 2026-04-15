@@ -122,3 +122,21 @@ export function weedZonesToWaypoints(
   if (sprayZones.length === 0) return null;
   return sprayZones.map((f) => [f.properties.lat, f.properties.lon]);
 }
+
+// ── Simulation mode toggles ───────────────────────────────────────────────────
+// These match the /api/sim-mode endpoints in backend/main.py.
+// SimToggle.tsx reads and writes these to switch between real and simulated execution.
+
+export interface SimMode {
+  mission_sim: boolean;
+  weed_demo: boolean;
+}
+
+export const getSimMode = (): Promise<SimMode> =>
+  fetchApi<SimMode>("/api/sim-mode");
+
+export const setMissionSim = (enabled: boolean): Promise<SimMode> =>
+  fetchApi<SimMode>(`/api/sim-mode/mission?enabled=${enabled}`, { method: "POST" });
+
+export const setWeedDemo = (enabled: boolean): Promise<SimMode> =>
+  fetchApi<SimMode>(`/api/sim-mode/weed?enabled=${enabled}`, { method: "POST" });

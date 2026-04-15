@@ -45,6 +45,7 @@ const Index = () => {
               onChange={mission.setMissionInput}
               onGenerate={mission.generateMission}
               appState={mission.appState}
+              onSimToggle={mission.setSimMode}
             />
             {mission.appState === "generating" && <AIThinkingOverlay />}
             <MissionSummary summary={mission.summary} />

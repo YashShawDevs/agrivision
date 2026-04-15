@@ -7,6 +7,7 @@ import {
   returnHome as apiReturnHome,
   getWeedMap,
   weedZonesToWaypoints,
+  getSimMode,
 } from "@/lib/api";
 import type { ConfidenceFactorResponse } from "@/lib/api";
 
@@ -53,9 +54,9 @@ const INITIAL_FLIGHT_DATA: FlightData = {
 // ── Weed spray waypoints ──────────────────────────────────────────────────────
 // These are the SAME fixed zones used by the backend weed-map endpoint.
 // Seed is fixed so coordinates are consistent across all UI components.
-// Centred on Mumbai field (matches backend .env FIELD_LAT/FIELD_LON defaults).
+// Centred on Aurangabad field (matches backend/main.py FIELD_CENTER_*).
 // If /api/weed-map is reachable these get replaced by live data at execution time.
-const FIELD_CENTER: [number, number] = [19.0760, 72.8777];
+const FIELD_CENTER: [number, number] = [19.8762, 75.3433];
 const FALLBACK_WEED_WAYPOINTS: [number, number][] = (() => {
   const pts: [number, number][] = [];
   for (let i = 0; i < 6; i++) {
@@ -134,10 +135,19 @@ export function useMissionState() {
     FALLBACK_WEED_WAYPOINTS
   );
   const [isSprayMode, setIsSprayMode] = useState(false);
+  // simMode: true = skip real drone API, fake phase progression only
+  const [simMode, setSimMode] = useState(false);
 
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const awaitingApiRef = useRef(false);
+
+  // Sync sim mode flag from backend once on mount
+  useEffect(() => {
+    getSimMode()
+      .then((s) => setSimMode(s.mission_sim))
+      .catch(() => {}); // silently ignore — stays false if backend unreachable
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (intervalRef.current)   clearInterval(intervalRef.current);
@@ -213,7 +223,6 @@ export function useMissionState() {
   }, []);
 
   const startExecution = useCallback(async () => {
-    awaitingApiRef.current = true;
     setAppState("executing");
 
     // Mark only the first phase as in_progress — others tick forward one by one
@@ -226,6 +235,17 @@ export function useMissionState() {
     );
     setFlightData({ ...INITIAL_FLIGHT_DATA, battery: 95 });
 
+    if (simMode) {
+      // ── SIMULATION MODE ──────────────────────────────────────────────────
+      // Don't call /api/execute at all — phase timer drives everything.
+      // awaitingApiRef stays false so the phase timer auto-completes the mission
+      // when the last phase finishes.
+      awaitingApiRef.current = false;
+      return;
+    }
+
+    // ── REAL MODE ────────────────────────────────────────────────────────────
+    awaitingApiRef.current = true;
     try {
       const res = await executeMission();
       awaitingApiRef.current = false;
@@ -242,7 +262,7 @@ export function useMissionState() {
       setAppState("aborted");
       toast.error(e instanceof Error ? e.message : "Failed to execute mission");
     }
-  }, [clearTimers]);
+  }, [clearTimers, simMode]);
 
   // ── Flight data ticker ────────────────────────────────────────────────────
   useEffect(() => {
@@ -359,5 +379,8 @@ export function useMissionState() {
     // Expose for LiveMap to consume the same waypoints
     weedWaypoints,
     isSprayMode,
+    // Expose so SimToggle can update the hook when user toggles sim mode
+    simMode,
+    setSimMode,
   };
 }
