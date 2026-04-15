@@ -1,17 +1,11 @@
 """
 sim_store.py — runtime simulation mode flags
-─────────────────────────────────────────────
-Place this file in backend/ alongside main.py.
-
-Toggled via /api/sim-mode endpoints (in main_additions.py).
-State persists to sim_state.json so it survives backend restarts.
+Toggled via /api/sim-mode endpoint, read by drone_control + agrivision.
+Persisted to sim_state.json so state survives backend reloads.
 """
-
-import json
-import os
+import json, os
 
 _STATE_FILE = os.path.join(os.path.dirname(__file__), "sim_state.json")
-
 
 def _load() -> dict:
     try:
@@ -20,14 +14,12 @@ def _load() -> dict:
     except Exception:
         return {"mission_sim": False, "weed_demo": False}
 
-
 def _save(state: dict):
     try:
         with open(_STATE_FILE, "w") as f:
             json.dump(state, f)
     except Exception:
         pass
-
 
 class SimStore:
     def __init__(self):
@@ -43,6 +35,4 @@ class SimStore:
         self.weed_demo = val
         _save({"mission_sim": self.mission_sim, "weed_demo": self.weed_demo})
 
-
-# Single shared instance — import this everywhere: from sim_store import sim
 sim = SimStore()
