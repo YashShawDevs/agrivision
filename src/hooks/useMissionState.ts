@@ -5,8 +5,12 @@ import {
   executeMission,
   abortMission as apiAbortMission,
   returnHome as apiReturnHome,
+  getSimMode,
+  getWeedMap,
+  weedZonesToWaypoints,
 } from "@/lib/api";
 import type { ConfidenceFactorResponse } from "@/lib/api";
+import { buildFallbackWeedWaypoints } from "@/lib/field";
 
 export type PhaseStatus = "completed" | "in_progress" | "pending";
 
@@ -48,6 +52,39 @@ const INITIAL_FLIGHT_DATA: FlightData = {
   connectionStatus: "connected",
 };
 
+const FALLBACK_WEED_WAYPOINTS = buildFallbackWeedWaypoints();
+
+function isSprayInput(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes("spray") ||
+    normalized.includes("weed") ||
+    normalized.includes("herbicide") ||
+    normalized.includes("precision") ||
+    (normalized.includes("detect") && normalized.includes("field"))
+  );
+}
+
+function buildSprayPhases(waypoints: [number, number][]): MissionPhase[] {
+  const phases: MissionPhase[] = [
+    { id: 1, name: "Initialization", duration: 4, status: "pending" },
+    { id: 2, name: "Fetching weed coordinates", duration: 3, status: "pending" },
+    { id: 3, name: "Path planning", duration: 3, status: "pending" },
+    { id: 4, name: "Takeoff", duration: 8, status: "pending" },
+  ];
+
+  let id = 5;
+  waypoints.forEach((_, index) => {
+    phases.push({ id: id++, name: `Moving to location ${index + 1}`, duration: 6, status: "pending" });
+    phases.push({ id: id++, name: `Spraying at location ${index + 1}`, duration: 4, status: "pending" });
+  });
+  phases.push({ id: id++, name: "Returning home", duration: 8, status: "pending" });
+  phases.push({ id: id++, name: "Landing", duration: 5, status: "pending" });
+  phases.push({ id, name: "Mission complete", duration: 2, status: "pending" });
+
+  return phases;
+}
+
 export function useMissionState() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [missionInput, setMissionInput] = useState("");
@@ -56,9 +93,18 @@ export function useMissionState() {
   const [confidence, setConfidence] = useState<ConfidenceData | null>(null);
   const [flightData, setFlightData] = useState<FlightData>(INITIAL_FLIGHT_DATA);
   const [preflightStep, setPreflightStep] = useState(0);
+  const [weedWaypoints, setWeedWaypoints] = useState<[number, number][]>(FALLBACK_WEED_WAYPOINTS);
+  const [isSprayMode, setIsSprayMode] = useState(false);
+  const [simMode, setSimMode] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const awaitingApiRef = useRef(false);
+
+  useEffect(() => {
+    getSimMode()
+      .then((state) => setSimMode(state.mission_sim))
+      .catch(() => {});
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -67,21 +113,56 @@ export function useMissionState() {
 
   const generateMission = useCallback(async () => {
     setAppState("generating");
+    const sprayMode = isSprayInput(missionInput);
+    setIsSprayMode(sprayMode);
+
     try {
-      const res = await apiGenerateMission(missionInput);
-      setSummary(res.missionSummary);
-      setPhases(
-        res.missionPhases.map((p) => ({
-          id: p.id,
-          name: p.name,
-          duration: p.duration,
-          status: "pending" as PhaseStatus,
-        }))
-      );
-      setConfidence({
-        score: res.confidenceScore,
-        factors: res.confidenceFactors,
-      });
+      if (sprayMode) {
+        let waypoints = FALLBACK_WEED_WAYPOINTS;
+
+        try {
+          const map = await getWeedMap();
+          const liveWaypoints = weedZonesToWaypoints(map);
+          if (liveWaypoints.length > 0) {
+            waypoints = liveWaypoints;
+          }
+        } catch {}
+
+        const sprayPhases = buildSprayPhases(waypoints);
+        setWeedWaypoints(waypoints);
+        setSummary(
+          `Precision spray mission - ${waypoints.length} weed zones identified. ` +
+          `Drone visits each zone and activates the spray nozzle for 4 seconds per location. ` +
+          `Total estimated time: ${sprayPhases.reduce((total, phase) => total + phase.duration, 0)}s. ` +
+          `Chemical usage reduced around 78% versus blanket spray.`
+        );
+        setPhases(sprayPhases);
+        setConfidence({
+          score: 91,
+          factors: [
+            { label: "Weed Data Available", value: 98 },
+            { label: "GPS Lock", value: 94 },
+            { label: "Battery Sufficient", value: 91 },
+            { label: "Path Valid", value: 92 },
+          ],
+        });
+      } else {
+        const res = await apiGenerateMission(missionInput);
+        setSummary(res.missionSummary);
+        setPhases(
+          res.missionPhases.map((p) => ({
+            id: p.id,
+            name: p.name,
+            duration: p.duration,
+            status: "pending" as PhaseStatus,
+          }))
+        );
+        setConfidence({
+          score: res.confidenceScore,
+          factors: res.confidenceFactors,
+        });
+      }
+
       setAppState("generated");
     } catch (e) {
       setAppState("idle");
@@ -95,7 +176,6 @@ export function useMissionState() {
   }, []);
 
   const startExecution = useCallback(async () => {
-    awaitingApiRef.current = true;
     setAppState("executing");
     setPhases((prev) =>
       prev.map((p, i) =>
@@ -106,6 +186,12 @@ export function useMissionState() {
     );
     setFlightData({ ...INITIAL_FLIGHT_DATA, battery: 95 });
 
+    if (simMode) {
+      awaitingApiRef.current = false;
+      return;
+    }
+
+    awaitingApiRef.current = true;
     try {
       const res = await executeMission();
       awaitingApiRef.current = false;
@@ -122,7 +208,7 @@ export function useMissionState() {
       setAppState("aborted");
       toast.error(e instanceof Error ? e.message : "Failed to execute mission");
     }
-  }, [clearTimers]);
+  }, [clearTimers, simMode]);
 
   // Flight data ticker during execution
   useEffect(() => {
@@ -210,6 +296,8 @@ export function useMissionState() {
     setConfidence(null);
     setFlightData(INITIAL_FLIGHT_DATA);
     setPreflightStep(0);
+    setIsSprayMode(false);
+    setWeedWaypoints(FALLBACK_WEED_WAYPOINTS);
   }, [clearTimers]);
 
   return {
@@ -220,6 +308,10 @@ export function useMissionState() {
     phases,
     confidence,
     flightData,
+    weedWaypoints,
+    isSprayMode,
+    simMode,
+    setSimMode,
     preflightStep,
     setPreflightStep,
     generateMission,

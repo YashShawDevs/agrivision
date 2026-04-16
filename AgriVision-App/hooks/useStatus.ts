@@ -1,6 +1,7 @@
 // hooks/useStatus.ts
 import { useState, useEffect, useRef } from "react";
 import { getStatus, SystemStatus } from "../constants/api";
+import { FIELD_BOUNDS, FIELD_CENTER } from "../constants/field";
 
 const POLL_INTERVAL = 2000; // 2 seconds
 
@@ -9,8 +10,8 @@ const DEMO_STATUS: SystemStatus = {
   drone: {
     battery: 87,
     altitude: 18.5,
-    latitude: 19.0760,
-    longitude: 72.8777,
+    latitude: FIELD_CENTER.lat,
+    longitude: FIELD_CENTER.lon,
     gpsLock: true,
     executing: false,
   },
@@ -27,12 +28,12 @@ const DEMO_STATUS: SystemStatus = {
     total_detections: 312,
   },
   field: {
-    field_center_lat: 19.0760,
-    field_center_lon: 72.8777,
+    field_center_lat: FIELD_CENTER.lat,
+    field_center_lon: FIELD_CENTER.lon,
     field_hectares: 2.4,
     scan_duration_sec: 142,
     weed_zone_count: 18,
-    bounds: { north: 19.077, south: 19.075, east: 72.879, west: 72.876 },
+    bounds: FIELD_BOUNDS,
     inference_mode: "cloud",
   },
 };

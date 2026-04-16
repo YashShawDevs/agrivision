@@ -7,13 +7,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   detectImage, detectVideo, pollJob, getWeedMap, clearWeedMap,
-  getSavings, getFieldInfo,
+  getSavings, getFieldInfo, toApiUrl,
   type Detection, type SavingsReport, type FieldInfo, type WeedMapGeoJSON,
 } from "@/lib/api";
 import { SimToggle } from "@/components/SimToggle";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const FIELD_CENTER: [number, number] = [19.0760, 72.8777];
+import { FIELD_CENTER } from "@/lib/field";
 
 function fmtDuration(sec: number) {
   if (sec < 60) return `${Math.round(sec)}s`;
@@ -267,7 +265,7 @@ export function AgriVisionTab() {
         const s = await pollJob(jobId);
         if (s.status === "completed" && s.result) {
           stopPoll();
-          setAnnUrl(`${API_BASE}${s.result.annotated_url}`);
+          setAnnUrl(toApiUrl(s.result.annotated_url));
           await refresh();
           setState("done");
         } else if (s.status === "failed") {
@@ -291,7 +289,7 @@ export function AgriVisionTab() {
         setState("processing");
         const r = await detectImage(file);
         setDets(r.detections);
-        setAnnUrl(`${API_BASE}${r.annotated_url}`);
+        setAnnUrl(toApiUrl(r.annotated_url));
         await refresh();
         setState("done");
       }

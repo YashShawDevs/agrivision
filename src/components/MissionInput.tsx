@@ -8,9 +8,10 @@ interface MissionInputProps {
   onChange: (v: string) => void;
   onGenerate: () => void;
   appState: AppState;
+  onSimToggle?: (enabled: boolean) => void;
 }
 
-export function MissionInput({ value, onChange, onGenerate, appState }: MissionInputProps) {
+export function MissionInput({ value, onChange, onGenerate, appState, onSimToggle }: MissionInputProps) {
   const isGenerating = appState === "generating";
   const isDisabled   = appState === "executing" || appState === "preflight";
   const isRegenerate = appState === "generated" || appState === "completed" || appState === "aborted";
@@ -19,7 +20,7 @@ export function MissionInput({ value, onChange, onGenerate, appState }: MissionI
     <div className="glass-card-glow p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="section-label text-primary">Mission Input</h2>
-        <SimToggle mode="mission" label="Sim Mode" />
+        <SimToggle mode="mission" label="Sim Mode" onToggle={onSimToggle} />
       </div>
       <textarea
         className="w-full h-28 bg-muted/40 border border-border/60 rounded-lg p-3 text-sm

@@ -5,9 +5,10 @@ import { getSimMode, setMissionSim, setWeedDemo } from "@/lib/api";
 interface Props {
   mode: "mission" | "weed";
   label: string;
+  onToggle?: (enabled: boolean) => void;
 }
 
-export function SimToggle({ mode, label }: Props) {
+export function SimToggle({ mode, label, onToggle }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -20,13 +21,16 @@ export function SimToggle({ mode, label }: Props) {
 
   const toggle = async () => {
     setLoading(true);
+    const next = !enabled;
+
     try {
-      const next = !enabled;
       if (mode === "mission") await setMissionSim(next);
       else                    await setWeedDemo(next);
       setEnabled(next);
+      onToggle?.(next);
     } catch {
-      // silently ignore — backend may not be running
+      setEnabled(next);
+      onToggle?.(next);
     } finally {
       setLoading(false);
     }

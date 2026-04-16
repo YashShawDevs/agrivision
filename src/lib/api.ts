@@ -3,11 +3,28 @@
  * Base URL from VITE_API_URL env var (default: http://localhost:8000).
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+function getDefaultApiBase(): string {
+  if (typeof window === "undefined") {
+    return "http://localhost:8000";
+  }
+
+  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+  return `${protocol}//${window.location.hostname}:8000`;
+}
+
+export const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() || getDefaultApiBase()).replace(/\/$/, "");
+
+export function toApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 // ── Core fetch helper ──────────────────────────────────────────────────────
 async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(toApiUrl(path), {
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
@@ -115,11 +132,27 @@ export interface WeedMapGeoJSON {
   }[];
 }
 
+export function weedZonesToWaypoints(geojson: WeedMapGeoJSON | null | undefined): [number, number][] {
+  if (!geojson?.features?.length) {
+    return [];
+  }
+
+  return geojson.features
+    .map((feature) => {
+      const { lat, lon } = feature.properties;
+      if (typeof lat !== "number" || typeof lon !== "number") {
+        return null;
+      }
+      return [lat, lon] as [number, number];
+    })
+    .filter((point): point is [number, number] => point !== null);
+}
+
 // ── AgriVision calls ───────────────────────────────────────────────────────
 export async function detectImage(file: File): Promise<ImageDetectResult> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/detect/image`, { method: "POST", body: fd });
+  const res = await fetch(toApiUrl("/api/detect/image"), { method: "POST", body: fd });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
   return res.json();
 }
@@ -127,7 +160,7 @@ export async function detectImage(file: File): Promise<ImageDetectResult> {
 export async function detectVideo(file: File): Promise<{ job_id: string; status: string }> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/detect/video`, { method: "POST", body: fd });
+  const res = await fetch(toApiUrl("/api/detect/video"), { method: "POST", body: fd });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
   return res.json();
 }

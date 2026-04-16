@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { generateMission, executeMission, abortMission, returnHome } from "../../constants/api";
+import { FIELD_CENTER } from "../../constants/field";
 
 const C = {
   paper: "#F7F3ED", paper2: "#F0EAE0", paper3: "#E8DFD2",
@@ -222,7 +223,7 @@ export default function ChatScreen() {
       } else if (intent === "status") {
         updateMsg(loadId, {
           loading: false,
-          text: "📡 Current telemetry:\n\n• Battery: 87%\n• Altitude: 18.5m AGL\n• GPS: Locked (strong fix)\n• Mission: Standby\n• Coordinates: 19.07600°N · 72.87770°E\n\nAll systems nominal.",
+          text: `📡 Current telemetry:\n\n• Battery: 87%\n• Altitude: 18.5m AGL\n• GPS: Locked (strong fix)\n• Mission: Standby\n• Coordinates: ${FIELD_CENTER.lat.toFixed(5)}°N · ${FIELD_CENTER.lon.toFixed(5)}°E\n\nAll systems nominal.`,
         });
 
       } else if (intent === "weed_query") {

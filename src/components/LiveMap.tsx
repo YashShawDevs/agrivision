@@ -4,21 +4,14 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import droneMarkerImg from "@/assets/drone-marker.png";
 import type { AppState } from "@/hooks/useMissionState";
+import { FIELD_CENTER, buildFallbackWeedWaypoints } from "@/lib/field";
 
 const MAP_ZOOM = 17;
-const HOME: [number, number] = [19.8762, 75.3433];
+const HOME: [number, number] = FIELD_CENTER;
 
 // ── Fallback waypoints (same seed as useMissionState) ─────────────────────────
 // Matches FALLBACK_WEED_WAYPOINTS exactly — no random values.
-const FALLBACK_WEED_WAYPOINTS: [number, number][] = (() => {
-  const pts: [number, number][] = [];
-  for (let i = 0; i < 6; i++) {
-    const col = i % 3;
-    const row = Math.floor(i / 3);
-    pts.push([HOME[0] + (row - 0.5) * 0.00054, HOME[1] + (col - 1) * 0.00054]);
-  }
-  return pts;
-})();
+const FALLBACK_WEED_WAYPOINTS = buildFallbackWeedWaypoints();
 
 // Full route: HOME → each weed zone → HOME
 function buildRoute(waypoints: [number, number][]): [number, number][] {

@@ -85,6 +85,7 @@ const Index = () => {
                 onChange={mission.setMissionInput}
                 onGenerate={mission.generateMission}
                 appState={mission.appState}
+                onSimToggle={mission.setSimMode}
               />
               {mission.appState === "generating" && <AIThinkingOverlay />}
               <MissionSummary summary={mission.summary} />
@@ -116,13 +117,23 @@ const Index = () => {
                 </div>
               )}
               <div className="flex-1"><CameraFeed /></div>
-              <div className="flex-1"><LiveMap appState={mission.appState} /></div>
+              <div className="flex-1">
+                <LiveMap
+                  appState={mission.appState}
+                  weedWaypoints={mission.weedWaypoints}
+                  isSprayMode={mission.isSprayMode}
+                />
+              </div>
             </div>
 
             {/* Right */}
             <div className="lg:col-span-3 space-y-4">
               <FlightDataPanel data={mission.flightData} />
-              <MissionProgress phases={mission.phases} appState={mission.appState} />
+              <MissionProgress
+                phases={mission.phases}
+                appState={mission.appState}
+                isSprayMode={mission.isSprayMode}
+              />
               <EmergencyControls
                 appState={mission.appState}
                 onAbort={mission.abortMission}
