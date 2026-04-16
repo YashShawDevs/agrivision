@@ -1,34 +1,37 @@
 """
-agrivision.py — YOLOv8 detector + GPS store
-============================================
-Three deployment modes (set INFERENCE_MODE in .env):
+agrivision.py — YOLOv8 weed detector + GPS projection + weed store
+===================================================================
+Three inference modes (set INFERENCE_MODE in .env):
   laptop  — YOLOv8s runs on this machine (default)
-  cloud   — POST frames to cloud endpoint (future)
-  edge    — lightweight model on RPi via HTTP (future)
+  cloud   — POST frames to CLOUD_DETECT_URL  (future)
+  edge    — lightweight model on RPi via EDGE_DETECT_URL (future)
+
+If agrivision_best.pt is not found OR weed_demo mode is ON,
+falls back to hardcoded demo detections automatically.
 """
 import os, math, uuid, time
 from pathlib import Path
 from typing import Optional
-
-# FIX: proper top-level import instead of fragile __import__() call inside methods
 from sim_store import sim
 
 # ── Config ─────────────────────────────────────────────────────────────────
-FIELD_CENTER_LAT   = float(os.getenv("FIELD_LAT",    "19.0760"))
-FIELD_CENTER_LON   = float(os.getenv("FIELD_LON",    "72.8777"))
-DRONE_ALTITUDE_M   = float(os.getenv("DRONE_ALT",    "20"))
-CAMERA_FOV_DEG     = float(os.getenv("CAMERA_FOV",   "84"))
-FIELD_HECTARES     = float(os.getenv("FIELD_HA",     "2.4"))
-BLANKET_L_PER_HA   = float(os.getenv("BLANKET_RATE", "200"))
-COST_PER_L_INR     = float(os.getenv("HERBICIDE_COST","80"))
-INFERENCE_MODE     = os.getenv("INFERENCE_MODE", "laptop")
-MODEL_PATH         = os.getenv("YOLO_MODEL_PATH", "agrivision_best.pt")
-CLOUD_DETECT_URL   = os.getenv("CLOUD_DETECT_URL", "")
-EDGE_DETECT_URL    = os.getenv("EDGE_DETECT_URL",  "")
-SAMPLE_EVERY       = int(os.getenv("VIDEO_SAMPLE_EVERY", "10"))
+FIELD_CENTER_LAT = float(os.getenv("FIELD_LAT",        "19.0760"))
+FIELD_CENTER_LON = float(os.getenv("FIELD_LON",        "72.8777"))
+DRONE_ALTITUDE_M = float(os.getenv("DRONE_ALT",        "20"))
+CAMERA_FOV_DEG   = float(os.getenv("CAMERA_FOV",       "84"))
+FIELD_HECTARES   = float(os.getenv("FIELD_HA",         "2.4"))
+BLANKET_L_PER_HA = float(os.getenv("BLANKET_RATE",     "200"))
+COST_PER_L_INR   = float(os.getenv("HERBICIDE_COST",   "80"))
+INFERENCE_MODE   = os.getenv("INFERENCE_MODE",          "laptop")   # laptop|cloud|edge
+MODEL_PATH       = os.getenv("YOLO_MODEL_PATH",         "agrivision_best.pt")
+CLOUD_DETECT_URL = os.getenv("CLOUD_DETECT_URL",        "")
+EDGE_DETECT_URL  = os.getenv("EDGE_DETECT_URL",         "")
+SAMPLE_EVERY     = int(os.getenv("VIDEO_SAMPLE_EVERY",  "10"))
 
-# ── GPS helpers ────────────────────────────────────────────────────────────
-def pixel_to_gps(px, py, iw, ih, clat, clon, alt=DRONE_ALTITUDE_M, fov=CAMERA_FOV_DEG):
+
+# ── GPS helpers ───────────────────────────────────────────────────────────
+def pixel_to_gps(px, py, iw, ih, clat, clon,
+                 alt=DRONE_ALTITUDE_M, fov=CAMERA_FOV_DEG):
     gw  = 2 * alt * math.tan(math.radians(fov) / 2)
     mpp = gw / iw
     lat = clat + ((ih / 2 - py) * mpp) / 111320
@@ -37,23 +40,21 @@ def pixel_to_gps(px, py, iw, ih, clat, clon, alt=DRONE_ALTITUDE_M, fov=CAMERA_FO
 
 def bbox_polygon(x1, y1, x2, y2, iw, ih, clat, clon):
     pts = [(x1,y1),(x2,y1),(x2,y2),(x1,y2),(x1,y1)]
-    coords = []
-    for px, py in pts:
-        lat, lon = pixel_to_gps(px, py, iw, ih, clat, clon)
-        coords.append([lon, lat])
-    return coords
+    return [[round(lon,7), round(lat,7)]
+            for px,py in pts
+            for lat,lon in [pixel_to_gps(px,py,iw,ih,clat,clon)]]
 
-# ── Detector ───────────────────────────────────────────────────────────────
+
+# ── Detector ──────────────────────────────────────────────────────────────
 class WeedDetector:
     def __init__(self):
         self._model = None
-        self._mode  = INFERENCE_MODE
 
     def _load(self):
         if self._model is not None:
             return
-        if self._mode != "laptop":
-            print(f"[AgriVision] Mode={self._mode} — skipping local model load")
+        if INFERENCE_MODE != "laptop":
+            print(f"[AgriVision] Mode={INFERENCE_MODE} — skipping local model load")
             return
         try:
             from ultralytics import YOLO
@@ -65,7 +66,6 @@ class WeedDetector:
 
     def process_image(self, in_path: str, out_path: str) -> dict:
         self._load()
-        # FIX: use properly imported `sim` rather than __import__('sim_store').sim
         if self._model is None or sim.weed_demo:
             return self._demo_image(in_path, out_path)
         results = self._model.predict(source=in_path, save=False, conf=0.30, verbose=False)
@@ -75,7 +75,6 @@ class WeedDetector:
 
     def process_video(self, in_path: str, out_path: str) -> dict:
         self._load()
-        # FIX: use properly imported `sim`
         if self._model is None or sim.weed_demo:
             return self._demo_video(in_path, out_path)
         import cv2
@@ -85,27 +84,25 @@ class WeedDetector:
         h     = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         out   = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-        all_det, weed_c, crop_c, fi = [], 0, 0, 0
-        print(f"[AgriVision] Video: {total} frames  sample_every={SAMPLE_EVERY}")
+        all_det, wc, cc, fi = [], 0, 0, 0
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
             if fi % SAMPLE_EVERY == 0:
-                results = self._model.predict(source=frame, conf=0.30, verbose=False)
-                out.write(results[0].plot())
+                res = self._model.predict(source=frame, conf=0.30, verbose=False)
+                out.write(res[0].plot())
                 prog = fi / max(total, 1)
-                flat = FIELD_CENTER_LAT + prog * 0.001
-                flon = FIELD_CENTER_LON + prog * 0.001
-                parsed = self._parse_boxes(results[0], flat, flon)
+                parsed = self._parse_boxes(res[0],
+                    FIELD_CENTER_LAT + prog * 0.001,
+                    FIELD_CENTER_LON + prog * 0.001)
                 for d in parsed["detections"]: d["frame"] = fi
                 all_det.extend(parsed["detections"])
-                weed_c += parsed["weed_count"]; crop_c += parsed["crop_count"]
+                wc += parsed["weed_count"]; cc += parsed["crop_count"]
             else:
                 out.write(frame)
             fi += 1
         cap.release(); out.release()
-        print(f"[AgriVision] Done — weeds={weed_c} crops={crop_c}")
-        return {"detections": all_det, "weed_count": weed_c, "crop_count": crop_c, "total_frames": total}
+        return {"detections": all_det, "weed_count": wc, "crop_count": cc, "total_frames": total}
 
     def _parse_boxes(self, result, clat, clon) -> dict:
         dets, wc, cc = [], 0, 0
@@ -121,12 +118,13 @@ class WeedDetector:
             cx, cy = (x1+x2)/2, (y1+y2)/2
             lat, lon = pixel_to_gps(cx, cy, iw, ih, clat, clon)
             dets.append({"id": str(uuid.uuid4())[:8], "class": name,
-                         "conf": round(conf,3), "bbox": [round(v,1) for v in [x1,y1,x2,y2]],
+                         "conf": round(conf, 3),
+                         "bbox": [round(v,1) for v in [x1,y1,x2,y2]],
                          "lat": lat, "lon": lon,
                          "polygon": bbox_polygon(x1,y1,x2,y2,iw,ih,clat,clon),
                          "spray": is_w})
             if is_w: wc += 1
-            else: cc += 1
+            else:    cc += 1
         return {"detections": dets, "weed_count": wc, "crop_count": cc}
 
     def _demo_image(self, in_path, out_path):
@@ -150,64 +148,46 @@ class WeedDetector:
         ]
         return {"detections": dets, "weed_count": 3, "crop_count": 2}
 
-    def _demo_video(self, in_path: str, out_path: str) -> dict:
-        """
-        FIX: Previously returned detections=[] which left weed store empty after video upload.
-        Now returns realistic demo detections so the map, spray zones, and savings all populate.
-        The input video is copied as-is to out_path (no OpenCV needed in demo mode).
-        """
+    def _demo_video(self, in_path, out_path):
         import shutil
-        try:
-            shutil.copy(in_path, out_path)
-        except Exception:
-            pass  # output file is optional in demo mode
-
-        # Simulate 8 weed zones spread across a 300-frame scan
-        base_lat = FIELD_CENTER_LAT
-        base_lon = FIELD_CENTER_LON
+        try: shutil.copy(in_path, out_path)
+        except: pass
+        base_lat, base_lon = FIELD_CENTER_LAT, FIELD_CENTER_LON
         offsets = [
-            (0.00008,  0.00010, True,  "weed", 0.87,  0),
-            (-0.00005, 0.00015, True,  "weed", 0.74,  30),
-            (0.00012, -0.00008, False, "crop", 0.92,  30),
-            (-0.00010,-0.00012, True,  "weed", 0.81,  60),
-            (0.00005,  0.00020, False, "crop", 0.88,  60),
-            (0.00018,  0.00003, True,  "weed", 0.79,  90),
-            (-0.00003, 0.00025, True,  "weed", 0.83,  120),
-            (0.00022, -0.00015, True,  "weed", 0.76,  150),
-            (-0.00018, 0.00008, False, "crop", 0.91,  150),
-            (0.00010,  0.00030, True,  "weed", 0.85,  180),
-            (0.00030,  0.00012, True,  "weed", 0.72,  210),
-            (-0.00025,-0.00005, False, "crop", 0.89,  210),
+            ( 0.00008,  0.00010, True,  "weed", 0.87,  0),
+            (-0.00005,  0.00015, True,  "weed", 0.74, 30),
+            ( 0.00012, -0.00008, False, "crop", 0.92, 30),
+            (-0.00010, -0.00012, True,  "weed", 0.81, 60),
+            ( 0.00005,  0.00020, False, "crop", 0.88, 60),
+            ( 0.00018,  0.00003, True,  "weed", 0.79, 90),
+            (-0.00003,  0.00025, True,  "weed", 0.83,120),
+            ( 0.00022, -0.00015, True,  "weed", 0.76,150),
+            (-0.00018,  0.00008, False, "crop", 0.91,150),
+            ( 0.00010,  0.00030, True,  "weed", 0.85,180),
+            ( 0.00030,  0.00012, True,  "weed", 0.72,210),
+            (-0.00025, -0.00005, False, "crop", 0.89,210),
         ]
         dets = []
         for dlat, dlon, spray, cls, conf, frame in offsets:
-            lat = round(base_lat + dlat, 7)
-            lon = round(base_lon + dlon, 7)
-            dets.append({
-                "id": str(uuid.uuid4())[:8],
-                "class": cls,
-                "conf": conf,
-                "bbox": [100, 100, 200, 200],
-                "lat": lat,
-                "lon": lon,
-                "polygon": [[lon-0.00003, lat-0.00002], [lon+0.00003, lat-0.00002],
-                            [lon+0.00003, lat+0.00002], [lon-0.00003, lat+0.00002],
-                            [lon-0.00003, lat-0.00002]],
-                "spray": spray,
-                "frame": frame,
-            })
-        weed_count = sum(1 for d in dets if d["spray"])
-        crop_count = sum(1 for d in dets if not d["spray"])
-        return {"detections": dets, "weed_count": weed_count, "crop_count": crop_count, "total_frames": 300}
+            lat, lon = round(base_lat+dlat,7), round(base_lon+dlon,7)
+            dets.append({"id": str(uuid.uuid4())[:8], "class": cls, "conf": conf,
+                         "bbox": [100,100,200,200], "lat": lat, "lon": lon,
+                         "polygon": [[lon-0.00003,lat-0.00002],[lon+0.00003,lat-0.00002],
+                                     [lon+0.00003,lat+0.00002],[lon-0.00003,lat+0.00002],
+                                     [lon-0.00003,lat-0.00002]],
+                         "spray": spray, "frame": frame})
+        wc = sum(1 for d in dets if d["spray"])
+        cc = sum(1 for d in dets if not d["spray"])
+        return {"detections": dets, "weed_count": wc, "crop_count": cc, "total_frames": 300}
 
 
-# ── Weed Store ─────────────────────────────────────────────────────────────
+# ── Weed Store ────────────────────────────────────────────────────────────
 class WeedStore:
     def __init__(self):
-        self._detections: list[dict] = []
+        self._detections: list = []
         self._start_time: Optional[float] = None
 
-    def add_detections(self, dets: list[dict]):
+    def add_detections(self, dets: list):
         if not self._start_time and dets:
             self._start_time = time.time()
         self._detections.extend(dets)
@@ -230,14 +210,13 @@ class WeedStore:
                     "frame": d.get("frame"),
                 }
             })
-        return {"type": "FeatureCollection", "features": features,
-                "total_zones": len(features)}
+        return {"type": "FeatureCollection", "features": features, "total_zones": len(features)}
 
     def get_savings_report(self) -> dict:
         total = len(self._detections)
         weeds = sum(1 for d in self._detections if d.get("spray"))
         crops = total - weeds
-        density = min(weeds / max(total,1), 0.40) if total > 0 else 0.22
+        density  = min(weeds / max(total,1), 0.40) if total > 0 else 0.22
         blanket  = FIELD_HECTARES * BLANKET_L_PER_HA
         precise  = density * blanket
         saved_l  = blanket - precise
@@ -263,17 +242,17 @@ class WeedStore:
         lons = [d["lon"] for d in weed_zones if d.get("lon")]
         bounds = None
         if lats and lons:
-            bounds = {"north": max(lats), "south": min(lats),
-                      "east":  max(lons), "west":  min(lons)}
+            bounds = {"north":max(lats),"south":min(lats),"east":max(lons),"west":min(lons)}
         return {
-            "field_center_lat":   FIELD_CENTER_LAT,
-            "field_center_lon":   FIELD_CENTER_LON,
-            "field_hectares":     FIELD_HECTARES,
-            "scan_duration_sec":  elapsed,
-            "weed_zone_count":    len(weed_zones),
-            "bounds":             bounds,
-            "inference_mode":     INFERENCE_MODE,
+            "field_center_lat": FIELD_CENTER_LAT,
+            "field_center_lon": FIELD_CENTER_LON,
+            "field_hectares":   FIELD_HECTARES,
+            "scan_duration_sec": elapsed,
+            "weed_zone_count":  len(weed_zones),
+            "bounds":           bounds,
+            "inference_mode":   INFERENCE_MODE,
         }
+
 
 detector   = WeedDetector()
 weed_store = WeedStore()

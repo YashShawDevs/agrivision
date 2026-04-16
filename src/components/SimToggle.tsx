@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { FlaskConical, Loader2 } from "lucide-react";
 import { getSimMode, setMissionSim, setWeedDemo } from "@/lib/api";
 
@@ -15,7 +15,7 @@ export function SimToggle({ mode, label }: Props) {
   useEffect(() => {
     getSimMode()
       .then(s => setEnabled(mode === "mission" ? s.mission_sim : s.weed_demo))
-      .catch(() => {});
+      .catch(() => {/* backend not reachable yet — stay false */});
   }, [mode]);
 
   const toggle = async () => {
@@ -26,7 +26,7 @@ export function SimToggle({ mode, label }: Props) {
       else                    await setWeedDemo(next);
       setEnabled(next);
     } catch {
-      // silently ignore if backend is down
+      // silently ignore — backend may not be running
     } finally {
       setLoading(false);
     }
@@ -37,18 +37,19 @@ export function SimToggle({ mode, label }: Props) {
       onClick={toggle}
       disabled={loading}
       title={enabled ? `Disable ${label}` : `Enable ${label}`}
-      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium
+        transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
         ${enabled
-          ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
-          : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          ? "bg-warning/15 border-warning/40 text-warning hover:bg-warning/20"
+          : "bg-muted/40 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/60"
         }`}
     >
       {loading
-        ? <Loader2 className="w-3 h-3 animate-spin"/>
-        : <FlaskConical className={`w-3 h-3 ${enabled ? "text-amber-500" : "text-gray-400"}`}/>
+        ? <Loader2 className="w-3 h-3 animate-spin" />
+        : <FlaskConical className={`w-3 h-3 ${enabled ? "text-warning" : "text-muted-foreground"}`} />
       }
       {label}
-      <span className={`w-1.5 h-1.5 rounded-full ${enabled ? "bg-amber-400" : "bg-gray-300"}`}/>
+      <span className={`w-1.5 h-1.5 rounded-full transition-colors ${enabled ? "bg-warning" : "bg-muted-foreground/40"}`} />
     </button>
   );
 }

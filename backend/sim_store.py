@@ -1,6 +1,6 @@
 """
-sim_store.py — runtime simulation mode flags
-Toggled via /api/sim-mode endpoint, read by drone_control + agrivision.
+sim_store.py — runtime simulation/demo mode flags
+Toggled via /api/sim-mode endpoints, read by drone_control + agrivision.
 Persisted to sim_state.json so state survives backend reloads.
 """
 import json, os
@@ -25,7 +25,7 @@ class SimStore:
     def __init__(self):
         s = _load()
         self.mission_sim: bool = s.get("mission_sim", False)
-        self.weed_demo:   bool = s.get("weed_demo", False)
+        self.weed_demo:   bool = s.get("weed_demo",   False)
 
     def set_mission_sim(self, val: bool):
         self.mission_sim = val
